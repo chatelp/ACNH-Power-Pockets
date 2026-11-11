@@ -4,8 +4,7 @@
 > **This tool writes directly to your Animal Crossing: New Horizons save. It can corrupt it, and a corrupted island may be impossible to recover.**
 >
 > - **Back up your save with [JKSV](https://github.com/J-D-K/JKSV) or [Checkpoint](https://github.com/BernardoGiordano/Checkpoint) before every editing session, and copy that backup to a computer.** The app's own SD backups are a safety net, not a replacement.
-> - **Version 1.0.0 has not been validated on real hardware yet.** It has been tested on a computer only: the real save engine runs there against a simulated console and a synthetic save, never against the game. Do the [first-use test](#first-use-test) on a save you can afford to lose before touching your real island.
-> - The save engine inherited from upstream **does not recompute the save's integrity hashes** (see [Known limitations](#known-limitations)). Whether the game tolerates this on your version is not proven.
+> - **No edited save has been accepted by the game yet.** In the first test on a real console (game 3.0.3), the app wrote exactly the intended pocket slots, but the game refused the save: one integrity hash had not been updated. That is fixed and checked against dumps of that very save, but the fixed build has not been through the game yet. Do the [first-use test](#first-use-test) on a save you can afford to lose before touching your real island.
 > - Offline use only. Editing saves can get you into trouble online and may break Nintendo's terms of service. Never trade edited or unreleased items with other players.
 > - Provided **as is, with no warranty of any kind** (MIT license). You alone are responsible for what happens to your save, your console and your accounts. Not affiliated with or endorsed by Nintendo.
 
@@ -84,7 +83,7 @@ Do this once, with a save you can afford to lose. It answers two questions nobod
    - **The save doesn't load, or the game offers to restore it:** stop. Restore your JKSV/Checkpoint backup and [open an issue](../../issues) with your game version.
    - **You get 10 tickets:** the game stores "quantity − 1". Displayed quantities are off by one until `kCountZeroBased` is set to `true` in `source/pp_model.h`. Please report it.
    - **You get 9 tickets:** quantities are exact.
-4. Save in the game, quit, reopen Power Pockets and look at **System › Info › Region hashes**. Report what you see. It tells us whether the game repairs the hashes on its own.
+4. Save in the game, quit, reopen Power Pockets and look at **System › Info › Region hashes**. It should read `personal 2/2 · main 19/19`. Report it if it doesn't.
 
 ## Install
 
@@ -148,20 +147,21 @@ Power Pockets has its own file name and its own folder (`switch/acnh_power_pocke
 
 **Every Apply:**
 1. Before its first write, copies the console's current save to `session_*.dat` on the SD card: the **pre-edit backup**. It is kept, across relaunches too, for as long as the console still holds what the app wrote last. Once the game has saved again, the next Apply takes a fresh one. So it always holds the last state written by the game itself.
-2. Hands your changes to the upstream engine. The engine first writes `backup_*.dat` (the state before this Apply), then writes and commits the save.
-3. Reloads the "original" state only if every step succeeded. If anything fails, your changes stay pending and the app says what happened.
+2. Recomputes the save's 21 integrity hashes in memory and checks them all. If one doesn't match, nothing is written.
+3. Hands your changes to the upstream engine. The engine first writes `backup_*.dat` (the state before this Apply), then writes and commits the save.
+4. Reloads the "original" state only if every step succeeded. If anything fails, your changes stay pending and the app says what happened.
 
 **Before any restore**, the backup is checked on a decrypted copy: sizes and value checksums must match, and it may only differ from the current save where this app writes (pockets, the four values, eight repair fields). Otherwise the restore is refused. A backup that is incomplete, damaged, or older than the game's last save is never offered.
 
 **The app's backups are not full backups.** They hold `personal.dat` and `main.dat` only, without the key files. They can't be restored with another tool, and they stop being usable as soon as the game saves again.
 
-**What this does *not* protect you from:** a game version with a different save layout (the app goes read-only when file sizes are unexpected, but that check is not exhaustive), the integrity hashes noted below, power loss at the wrong moment, or SD card failure. That is why the JKSV/Checkpoint backup at the top of this page matters.
+**What this does *not* protect you from:** a game version with a different save layout (the app goes read-only when file sizes are unexpected, but that check is not exhaustive), power loss at the wrong moment, or SD card failure. That is why the JKSV/Checkpoint backup at the top of this page matters.
 
 ## Known limitations
 
-- **Integrity hashes are not recomputed.** The save is split into regions protected by Murmur3 hashes. The engine finds them but doesn't update them after an edit. This is inherited from upstream and deliberately left alone (this fork doesn't touch the engine). System › Info shows how many hashes match.
+- **Not confirmed in the game yet.** The game protects each region of the save with a hash and refuses the whole save when one is stale. Power Pockets now recomputes all 21 before writing (upstream's unreleased source, which this fork started from, had stopped doing it). This is verified on real dumps, not yet by the game itself. System › Info shows how many hashes match.
 - **Quantity convention unconfirmed:** see the [first-use test](#first-use-test).
-- **Slow start after an edit.** Until the game has saved again, the inherited engine rescans the edited files at launch. The "Reading the save…" screen can stay up for tens of seconds after a pocket edit, and for several minutes after a loan edit (estimates, not measured on a console). It is not frozen: wait.
+- **Slow start on a save with a stale hash.** If a save was written without its hashes (by an earlier build of this app, for instance), the inherited engine rescans the files at launch. The "Reading the save…" screen can then stay up for tens of seconds, or minutes (estimates, not measured on a console). It is not frozen: wait, then run the Save Doctor.
 - **Only the primary resident** (`Villager0`) and **only the 20 pocket slots** (not the bag expansion).
 - **Save versions 3.0.x only**; anything else is read-only.
 - Item names are English, from `items.txt`. About 6 % of the named items have no picture rule yet and show a "?".
@@ -207,7 +207,9 @@ Tools (axes, nets, fishing rods, shovels, watering cans, slingshots, ladder, vau
 | Red "missing file" or "unreadable file" text at launch | `font.ttf` is missing from `sdmc:/switch/acnh_power_pockets/`, or its copy is damaged. |
 | Names show as `ID 16DB` | `items.txt` is missing. Editing still works, but favorites become read-only and the `1/slot` protection is off: put the file back before placing items. |
 | No pictures next to the items | `item_glyphs.png` or `item_glyphs.txt` is missing. System › Info says "no pictures". |
-| Stuck on "Reading the save…" | Not frozen. After an edit, and until the game has saved again, the launch scan is slow (minutes after a loan edit). |
+| The game says the save data is corrupted | Restore your JKSV/Checkpoint backup. Or, in Power Pockets: System › *Restore pre-edit backup* (the state before your edits), or System › *Save Doctor* (keeps your edits and recomputes the hashes). Then please [open an issue](../../issues). |
+| Amber banner "Stale integrity hash" | The save on the console has a hash that doesn't match its data, and the game would refuse it. System › *Save Doctor* fixes it; so does any Apply. |
+| Stuck on "Reading the save…" | Not frozen. With a stale hash on the console the launch scan is slow (up to minutes). |
 | "This backup doesn't belong to the current save" | The game has saved since the backup was made, or the file is damaged. It can't be restored; use your JKSV/Checkpoint backup. |
 | "Read-only: unsupported save version" | Your save isn't the 3.0.x layout this engine knows. Nothing will be written. |
 | Changes vanished in the game | The game was suspended while you edited, or you quit without **Apply**. |
@@ -227,6 +229,7 @@ git remote add upstream https://github.com/cbreezy210/ACNH-Save-Editor.git && gi
 python3 tools/check_engine_untouched.py upstream/main   # proves the save engine matches upstream, SD folder name aside
 sh tests/host/run.sh            # unit tests, parser fuzzing, item-picture rules vs the design tool, compile check
 sh tests/host/engine_bench.sh   # the real main.cpp on a fake console: byte-exact Apply / restore / Doctor, injected failures
+PP_REAL_SAVE=<unzipped JKSV backup> sh tests/host/engine_bench.sh real_save   # same checks on a dump of your own save
 sh tests/host/ui_shots.sh       # the real UI with a fake engine: flows and failure dialogs, with screenshots
 sh tests/host/ui_gallery.sh     # regenerates the screenshots of this README
 ```
@@ -249,6 +252,8 @@ The documents in `docs/` are written in French.
 
 Power Pockets starts from [ACNH-Save-Editor](https://github.com/cbreezy210/ACNH-Save-Editor) v1.4.1 (commit `731c228`) by cbreezy210, a native Switch save editor for Animal Crossing. Everything that reads, decrypts, encrypts and writes the save is upstream code. One thing was changed in it: the SD folder in the paths of its own files (`backup_*.dat`, `damaged_*.dat`, `layout_*.dat`), so that Power Pockets and upstream never share a file. A script checks on every push that this is the only difference, down to the byte.
 
+One step was added around the engine, not inside it: just before each write, Power Pockets recomputes the save's integrity hashes in memory. The engine then writes those bytes as they are.
+
 What changed is everything you see and touch:
 
 | ACNH-Save-Editor | ACNH Power Pockets |
@@ -260,6 +265,7 @@ What changed is everything you see and touch:
 | Quantity asked for every item | `1/slot` items flagged, no quantity asked |
 | **ZL** restores in one press, **ZR ZR** runs the Doctor | Both in the System panel, hold-to-confirm, blocked with pending changes |
 | One rolling backup | Rolling backup plus a pre-edit backup kept until the game saves, both validated before restoring |
+| Integrity hashes: rewritten for regions guessed by scanning (v1.4.0 release), not rewritten at all (later, unreleased source) | Rewritten from the fixed 3.0.x region table, and all 21 checked before anything is written |
 
 The logo, icons and item pictures are original drawings made for this project. They are not taken from the game.
 

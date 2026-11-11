@@ -22,7 +22,7 @@
 namespace pp {
 
 // Result of the read-only check of a pair of backup files (invariant I8).
-enum BackupCheck { BC_OK, BC_MISSING, BC_SIZE, BC_READ, BC_CORRUPT, BC_NOMEM };
+enum BackupCheck { BC_OK, BC_MISSING, BC_SIZE, BC_READ, BC_CORRUPT, BC_NOMEM, BC_STALE_HASH };
 
 struct InfoData {
     // Save

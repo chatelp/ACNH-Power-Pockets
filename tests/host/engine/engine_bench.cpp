@@ -153,6 +153,10 @@ static void expectApply(Bytes& p, Bytes& m, const Model& mo) {
     encStore(&p[WALLET], mo.vals[0]); encStore(&p[BANK], mo.vals[1]); encStore(&p[MILES], mo.vals[2]);
     encStore(&m[LOAN], mo.vals[3]);
     for (int i = 0; i < 8; i++) wr32(&m[HEAL0 + i * HEAL_STEP], 0);
+    // The app must leave every region hash consistent with the data it writes
+    // (independent Murmur3 above), or the game refuses the save.
+    if (p.size() >= P_SZ) fixHashes(p, P_REGS, 2);
+    if (m.size() >= M_SZ) fixHashes(m, M_REGS, 19);
 }
 static size_t firstDiff(const Bytes& a, const Bytes& b) {
     if (a.size() != b.size()) return 0;
@@ -302,7 +306,7 @@ static void scnApplyRestoreCycle(const Save& s0) {
             CHECK_SAME(p1, eP); CHECK_SAME(m1, eM);            // only pockets, 4 values, 8 heal fields changed
             CHECK(encDecode(&p1[WALLET]) == 54321 && encValid(&p1[WALLET]) && encValid(&p1[BANK]) && encValid(&p1[MILES]) && encValid(&m1[LOAN]));
             CHECK(rd32(&p1[POCKETS + 160]) == 20);            // slot counter after the 20 records untouched
-            CHECK(validHashes(m1, M_REGS, 19) == 18);         // only the loan region hash is stale (engine never rehashes)
+            CHECK(validHashes(p1, P_REGS, 2) == 2 && validHashes(m1, M_REGS, 19) == 19);   // every hash matches what was written
             CHECK_SAME(slurp(sd("backup_personal.dat")), s0.pEnc); CHECK_SAME(slurp(sd("backup_main.dat")), s0.mEnc);
             CHECK_SAME(slurp(sd("session_personal.dat")), s0.pEnc); CHECK_SAME(slurp(sd("session_main.dat")), s0.mEnc);
             CHECK_SAME(slurp("nand/Villager0/personalHeader.dat"), s0.pHdr); CHECK_SAME(slurp("nand/mainHeader.dat"), s0.mHdr);
@@ -648,6 +652,134 @@ static void scnDoctor(const Save& s0) {
     }, [&]() { CHECK_SAME(slurp(NAND_P), s0.pEnc); CHECK_SAME(slurp(NAND_M), s0.mEnc); });
 }
 
+// A save with a stale region hash, as written by a build that didn't rehash (the state a
+// real console ended up in: pockets edited, hash of personal region 2 left as it was, the
+// game then refuses the save). The app must say so, refuse to restore a backup in that
+// state, and both the Save Doctor and Apply must leave every hash valid.
+static Save staleSave(const Save& s0) {
+    Save s = s0;
+    rec(s.model.pockets, 5, ID_NMT, 0, 0, pp::qtyToRaw(1), 0);
+    memcpy(&s.pPlain[POCKETS], s.model.pockets, sizeof s.model.pockets);     // data changed, hash not updated
+    encrypt(s);
+    return s;
+}
+static void scnStaleHash(const Save& s0) {
+    g_scn = "stale_hash_repaired";
+    const Save s = staleSave(s0);
+    CHECK(validHashes(s.pPlain, P_REGS, 2) == 1 && validHashes(s.mPlain, M_REGS, 19) == 19);
+
+    World w = makeWorld(g_scn, s);
+    launch(w, "launch 1: Save Doctor", [&]() {
+        idle(2);
+        SEE("Stale integrity hash");
+        probe([&]() { writeFile(sd("backup_personal.dat"), s.pEnc); writeFile(sd("backup_main.dat"), s.mEnc); });
+        panel(P_POCKETS, P_SYSTEM);
+        systemRow(ROW_RESTORE);                                  // a backup the game would refuse is not offered
+        SEE("stale integrity hash"); NOT_SEE("Restore the SD backup?");
+        press(A); idle(2);
+        systemRow(ROW_DOCTOR);
+        SEE("Run the Save Doctor?");
+        confirmHold();
+        SEE("Repair finished");
+        probe([&]() {
+            Bytes eP = s.pPlain, eM = s.mPlain;                  // same data, hashes made consistent, nothing else
+            fixHashes(eP, P_REGS, 2); fixHashes(eM, M_REGS, 19);
+            Bytes p1 = nandPlainP(s), m1 = nandPlainM(s);
+            CHECK_SAME(p1, eP); CHECK_SAME(m1, eM);
+            CHECK(validHashes(p1, P_REGS, 2) == 2 && validHashes(m1, M_REGS, 19) == 19);
+            CHECK(counters.commits == 1);
+        });
+        press(A); idle(2);
+        panel(P_SYSTEM, P_POCKETS);
+        NOT_SEE("Stale integrity hash");
+        quitFromPanel();
+    });
+
+    World w2 = makeWorld("stale_hash_apply", s);
+    launch(w2, "other console: Apply", [&]() {
+        static Model m; m = s.model;
+        idle(2);
+        SEE("Stale integrity hash");
+        placeTicket(m, 6);
+        applyFromPanel();
+        SEE("Changes applied");
+        NOT_SEE("Stale integrity hash");
+        probe([&, mo = m]() {
+            Bytes eP = s.pPlain, eM = s.mPlain; expectApply(eP, eM, mo);
+            Bytes p1 = nandPlainP(s), m1 = nandPlainM(s);
+            CHECK_SAME(p1, eP); CHECK_SAME(m1, eM);
+            CHECK(validHashes(p1, P_REGS, 2) == 2 && validHashes(m1, M_REGS, 19) == 19);
+        });
+        quitFromPanel();
+    });
+}
+
+// Optional: the same checks on a REAL save dump (never part of the repository).
+//   PP_REAL_SAVE=<dir with Villager0/personal.dat, Villager0/personalHeader.dat, main.dat,
+//                 mainHeader.dat, e.g. an unzipped JKSV backup>  sh tests/host/engine_bench.sh real_save
+// The Save Doctor must leave the data untouched and every region hash valid; when slot 1 is
+// occupied and a slot is free, an Apply must change exactly what is expected.
+static void scnRealSave(const Save&) {
+    g_scn = "real_save";
+    const char* dir = getenv("PP_REAL_SAVE");
+    if (!dir) { printf("    skipped (PP_REAL_SAVE not set)\n"); return; }
+    Save s; std::string d = dir;
+    readFile(d + "/Villager0/personalHeader.dat", s.pHdr); readFile(d + "/mainHeader.dat", s.mHdr);
+    readFile(d + "/Villager0/personal.dat", s.pEnc); readFile(d + "/main.dat", s.mEnc);
+    CHECK(s.pHdr.size() == HDR_SZ && s.mHdr.size() == HDR_SZ && s.pEnc.size() == P_SZ && s.mEnc.size() == M_SZ);
+    if (g_fail) return;
+    s.pPlain = s.pEnc; s.mPlain = s.mEnc;
+    CryptACNH(s.pHdr.data(), s.pPlain.data(), s.pPlain.size()); CryptACNH(s.mHdr.data(), s.mPlain.data(), s.mPlain.size());
+    memcpy(s.model.pockets, &s.pPlain[POCKETS], sizeof s.model.pockets);
+    s.model.vals[0] = encDecode(&s.pPlain[WALLET]); s.model.vals[1] = encDecode(&s.pPlain[BANK]);
+    s.model.vals[2] = encDecode(&s.pPlain[MILES]);  s.model.vals[3] = encDecode(&s.mPlain[LOAN]);
+    CHECK(encValid(&s.pPlain[WALLET]) && encValid(&s.pPlain[BANK]) && encValid(&s.pPlain[MILES]) && encValid(&s.mPlain[LOAN]));
+    const int hp = validHashes(s.pPlain, P_REGS, 2), hm = validHashes(s.mPlain, M_REGS, 19);
+    printf("    as dumped: personal %d/2 hashes valid, main %d/19\n", hp, hm);
+    const bool stale = hp != 2 || hm != 19;
+
+    World w = makeWorld(g_scn, s);
+    launch(w, "Save Doctor", [&]() {
+        idle(2);
+        if (stale) SEE("Stale integrity hash"); else NOT_SEE("Stale integrity hash");
+        panel(P_POCKETS, P_SYSTEM);
+        systemRow(ROW_DOCTOR);
+        SEE("Run the Save Doctor?");
+        confirmHold();
+        SEE("Repair finished");
+        probe([&]() {
+            Bytes eP = s.pPlain, eM = s.mPlain;
+            fixHashes(eP, P_REGS, 2); fixHashes(eM, M_REGS, 19);
+            Bytes p1 = nandPlainP(s), m1 = nandPlainM(s);
+            CHECK_SAME(p1, eP); CHECK_SAME(m1, eM);              // data untouched, hashes consistent
+            CHECK(validHashes(p1, P_REGS, 2) == 2 && validHashes(m1, M_REGS, 19) == 19);
+            if (!stale) { CHECK_SAME(slurp(NAND_P), s.pEnc); CHECK_SAME(slurp(NAND_M), s.mEnc); }   // healthy save: no-op
+            printf("    after the Save Doctor: personal 2/2, main 19/19\n");
+        });
+        press(A); idle(2);
+        panel(P_SYSTEM, P_POCKETS); quitFromPanel();
+    });
+
+    const int freeSlot = pp::nextEmptySlot(s.model.pockets, 1);
+    if (pp::slotEmpty(s.model.pockets, 1) || freeSlot < 0) { printf("    Apply part skipped (needs slot 1 occupied and a free slot)\n"); return; }
+    World w2 = makeWorld("real_save_apply", s);
+    launch(w2, "Apply one ticket", [&]() {
+        static Model m; m = s.model;
+        idle(2);
+        placeTicket(m, freeSlot);
+        applyFromPanel();
+        SEE("Changes applied");
+        probe([&, mo = m]() {
+            Bytes eP = s.pPlain, eM = s.mPlain; expectApply(eP, eM, mo);
+            Bytes p1 = nandPlainP(s), m1 = nandPlainM(s);
+            CHECK_SAME(p1, eP); CHECK_SAME(m1, eM);              // one pocket record + consistent hashes, nothing else
+            CHECK(validHashes(p1, P_REGS, 2) == 2 && validHashes(m1, M_REGS, 19) == 19);
+            printf("    after Apply (ticket in slot %d): personal 2/2, main 19/19, nothing else changed\n", freeSlot);
+        });
+        quitFromPanel();
+    });
+}
+
 // Unexpected file size (another game version): read-only, no mutation, no write of any kind.
 static void scnReadOnly() {
     g_scn = "read_only_save";
@@ -788,6 +920,8 @@ int main(int argc, char** argv) {
         { "restore_when_sd_full", scnRestoreWhenSdFull },
         { "pre_edit_copy_fails", scnSessionCopyFails },
         { "save_doctor", scnDoctor },
+        { "stale_hash_repaired", scnStaleHash },
+        { "real_save", scnRealSave },
         { "read_only_save", [](const Save&) { scnReadOnly(); } },
         { "launch_guards", scnGuards },
         { "review_revert_focus", scnReviewRevertFocus },

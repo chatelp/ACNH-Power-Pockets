@@ -591,6 +591,65 @@ int main(int argc, char** argv) {
     // Invariant I9: offsets above are those of save revision 3.0.x (NHSE
     // PersonalOffsets30 / MainSaveOffsets30). Other sizes => read-only.
     const bool editSupported = saveReady && pSz == 0x74A40 && mSz == 0x9B0E90;
+
+    // ---- Integrity hashes (Power Pockets) --------------------------------------------
+    // The game stores a Murmur3 hash in front of each region of personal.dat / main.dat and
+    // rejects the whole save ("the save data is corrupted") when one of them is stale.
+    // Upstream's last release rewrote them for regions it guessed by scanning the files;
+    // its unreleased HEAD, which this fork started from, dropped the step altogether.
+    // Seen on a real 3.0.3 save: an Apply that changed nothing but pocket records left one
+    // stale hash, and the game refused the save.
+    //
+    // Fixed region table of the 3.0.x layout: hash at `off`, computed over the next `len`
+    // bytes. It is only used when both files have the 3.0.x sizes (editSupported), and it
+    // was checked against a real game-written save (21 of 21 hashes match).
+    static const pp::RegionRef HASH_P[] = { { 0x00110, 0x37ACC }, { 0x37BE0, 0x3CE5C } };
+    static const pp::RegionRef HASH_M[] = {
+        { 0x000110, 0x1E339C }, { 0x1E34B0, 0x3D089C }, { 0x5B3E60, 0x037ACC }, { 0x5EB930, 0x03CE5C },
+        { 0x6288A0, 0x037ACC }, { 0x660370, 0x03CE5C }, { 0x69D2E0, 0x037ACC }, { 0x6D4DB0, 0x03CE5C },
+        { 0x711D20, 0x037ACC }, { 0x7497F0, 0x03CE5C }, { 0x786760, 0x037ACC }, { 0x7BE230, 0x03CE5C },
+        { 0x7FB1A0, 0x037ACC }, { 0x832C70, 0x03CE5C }, { 0x86FBE0, 0x037ACC }, { 0x8A76B0, 0x03CE5C },
+        { 0x8E4620, 0x037ACC }, { 0x91C0F0, 0x03CE5C }, { 0x958F50, 0x057F3C } };
+    const int HASH_PN = (int)(sizeof(HASH_P) / sizeof(HASH_P[0])), HASH_MN = (int)(sizeof(HASH_M) / sizeof(HASH_M[0]));
+    auto hashesValid = [&](const uint8_t* p, const uint8_t* m) -> bool {
+        return editSupported && pp::regionsHashOk(p, pSz, HASH_P, HASH_PN, Murmur3Hash) == HASH_PN &&
+               pp::regionsHashOk(m, mSz, HASH_M, HASH_MN, Murmur3Hash) == HASH_MN;
+    };
+    // Hash status of the save ON THE CONSOLE, for the UI. Taken only at moments when the
+    // working buffers equal the console state (after loading, after a successful write):
+    // while pocket edits are pending the buffers legitimately disagree with their hashes.
+    int conPOk = 0, conPN = 0, conMOk = 0, conMN = 0;
+    auto noteConsoleHashes = [&]() {
+        if (!saveReady) return;
+        if (editSupported) {                                  // known layout: the fixed table is the reference
+            conPN = HASH_PN; conMN = HASH_MN;
+            conPOk = pp::regionsHashOk(personal, pSz, HASH_P, HASH_PN, Murmur3Hash);
+            conMOk = pp::regionsHashOk(mainData, mSz, HASH_M, HASH_MN, Murmur3Hash);
+        } else {                                              // unknown layout: regions found by the engine's scan
+            std::vector<pp::RegionRef> r;
+            for (int i = 0; i < pRegC; i++) r.push_back({ pReg[i].off, pReg[i].len });
+            conPN = pRegC; conPOk = pp::regionsHashOk(personal, pSz, r.data(), (int)r.size(), Murmur3Hash);
+            r.clear();
+            for (int i = 0; i < mRegC; i++) r.push_back({ mReg[i].off, mReg[i].len });
+            conMN = mRegC; conMOk = pp::regionsHashOk(mainData, mSz, r.data(), (int)r.size(), Murmur3Hash);
+        }
+    };
+    noteConsoleHashes();
+    // Brings the working buffers to exactly the bytes the engine is about to write, then makes
+    // every region hash match them. The engine applies the same four values, zeroes the same
+    // eight fields and (after syncSaveSlotVars) writes the same slot record on its own copies:
+    // all of that rewrites identical bytes, so the hashes computed here are the hashes of what
+    // reaches the console. RAM only; nothing is written by this function.
+    auto finalizeBuffers = [&](bool zeroFieldsLikeDoSave) {
+        applyEdit(personal, WALLET_OFF, g_vals[0]);
+        applyEdit(personal, BANK_OFF, g_vals[1]);
+        applyEdit(personal, MILES_OFF, g_vals[2]);
+        applyEdit(mainData, LOAN_OFF, g_vals[3]);
+        // doSave() zeroes these 8 fields on every write; the repair pass leaves them alone.
+        if (zeroFieldsLikeDoSave) for (int i = 0; i < 8; i++) WriteLE32(mainData + 0x5B3D50 + (i * 0x74A40), 0x00000000);
+        for (int i = 0; i < HASH_PN; i++) WriteLE32(personal + HASH_P[i].off, Murmur3Hash(personal + HASH_P[i].off + 4, HASH_P[i].len));
+        for (int i = 0; i < HASH_MN; i++) WriteLE32(mainData + HASH_M[i].off, Murmur3Hash(mainData + HASH_M[i].off + 4, HASH_M[i].len));
+    };
     static char fatalBuf[128];
     snprintf(fatalBuf, sizeof fatalBuf, "%s", g_status_buf);
     // The engine only reports a failed mount or a failed read; name the other causes.
@@ -630,23 +689,32 @@ int main(int argc, char** argv) {
     hooks.apply = [&]() -> pp::EngineResult {
         g_status_buf[0] = '\0';
         pp::syncSaveSlotVars(personal + POCKETS_BASE, g_slot, g_newId, g_newCount);
+        // Never write a save the game would refuse: recompute the hashes, then check all 21.
+        if (!editSupported) { snprintf(g_status_buf, sizeof(g_status_buf), "Unsupported save layout: nothing written"); return pp::ER_OTHER; }
+        finalizeBuffers(true);
+        if (!hashesValid(personal, mainData)) { snprintf(g_status_buf, sizeof(g_status_buf), "HASH self-check failed: nothing written"); return pp::ER_HASH; }
         doSave();
         pp::EngineResult r = pp::parseSaveStatus(g_status_buf);
-        if (r == pp::ER_OK) markWritten();
+        if (r == pp::ER_OK) { markWritten(); noteConsoleHashes(); }
         return r;
     };
     hooks.restore = [&]() -> pp::EngineResult {
         g_status_buf[0] = '\0';
         doRestore();
         pp::EngineResult r = pp::parseRestoreStatus(g_status_buf);
-        if (r == pp::ER_OK) markWritten();
+        if (r == pp::ER_OK) { markWritten(); noteConsoleHashes(); }
         return r;
     };
     hooks.doctor = [&]() -> pp::EngineResult {
         g_status_buf[0] = '\0';
+        // The repair pass rewrites the working buffers as they are: give them valid hashes
+        // first. This is what makes the Doctor able to fix a save the game refuses.
+        if (!editSupported) { snprintf(g_status_buf, sizeof(g_status_buf), "Unsupported save layout: nothing written"); return pp::ER_OTHER; }
+        finalizeBuffers(false);
+        if (!hashesValid(personal, mainData)) { snprintf(g_status_buf, sizeof(g_status_buf), "HASH self-check failed: nothing written"); return pp::ER_HASH; }
         doDoctor();
         pp::EngineResult r = pp::parseDoctorStatus(g_status_buf);
-        if (r == pp::ER_OK || r == pp::ER_OK_NO_FORENSIC) markWritten();
+        if (r == pp::ER_OK || r == pp::ER_OK_NO_FORENSIC) { markWritten(); noteConsoleHashes(); }
         return r;
     };
 
@@ -676,11 +744,17 @@ int main(int argc, char** argv) {
                 auto fieldOk = [](const uint8_t* b, uint32_t off) { return b[off + 7] == CalcChecksum(LE32(b + off)); };
                 if (!fieldOk(cp, WALLET_OFF) || !fieldOk(cp, BANK_OFF) || !fieldOk(cp, MILES_OFF) || !fieldOk(cm, LOAN_OFF))
                     res = pp::BC_CORRUPT;
-                const pp::ByteRange okP[] = { { POCKETS_BASE, (uint32_t)pp::POCKETS_BYTES }, { WALLET_OFF, 8 }, { BANK_OFF, 8 }, { MILES_OFF, 8 } };
-                pp::ByteRange okM[9] = { { LOAN_OFF, 8 } };
-                for (int i = 0; i < 8; i++) okM[1 + i] = { (uint32_t)(0x5B3D50 + (i * 0x74A40)), 4 };
-                if (pp::diffOutside(personal, cp, pSz, okP, 4) != 0 || pp::diffOutside(mainData, cm, mSz, okM, 9) != 0)
+                std::vector<pp::ByteRange> okP = { { POCKETS_BASE, (uint32_t)pp::POCKETS_BYTES }, { WALLET_OFF, 8 }, { BANK_OFF, 8 }, { MILES_OFF, 8 } };
+                std::vector<pp::ByteRange> okM = { { LOAN_OFF, 8 } };
+                for (int i = 0; i < 8; i++) okM.push_back({ (uint32_t)(0x5B3D50 + (i * 0x74A40)), 4 });
+                if (editSupported) {                          // the hash words follow the data they protect
+                    for (int i = 0; i < HASH_PN; i++) okP.push_back({ HASH_P[i].off, 4 });
+                    for (int i = 0; i < HASH_MN; i++) okM.push_back({ HASH_M[i].off, 4 });
+                }
+                if (pp::diffOutside(personal, cp, pSz, okP.data(), (int)okP.size()) != 0 || pp::diffOutside(mainData, cm, mSz, okM.data(), (int)okM.size()) != 0)
                     res = pp::BC_CORRUPT;
+                // A backup with a stale hash would be refused by the game: don't restore it.
+                else if (res == pp::BC_OK && editSupported && !hashesValid(cp, cm)) res = pp::BC_STALE_HASH;
             }
         }
         if (cp) free(cp);
@@ -708,14 +782,9 @@ int main(int argc, char** argv) {
     hooks.info = [&](pp::InfoData& d) {
         d.saveSizeOk = editSupported;
         d.personalSize = (long)pSz; d.mainSize = (long)mSz;
-        d.pRegCount = pRegC; d.mRegCount = mRegC;
+        d.pRegCount = conPN; d.mRegCount = conMN;               // console state, see noteConsoleHashes
+        d.pRegOk = conPOk; d.mRegOk = conMOk;
         if (saveReady) {
-            std::vector<pp::RegionRef> r;
-            for (int i = 0; i < pRegC; i++) r.push_back({ pReg[i].off, pReg[i].len });
-            d.pRegOk = pp::regionsHashOk(personal, pSz, r.data(), (int)r.size(), Murmur3Hash);
-            r.clear();
-            for (int i = 0; i < mRegC; i++) r.push_back({ mReg[i].off, mReg[i].len });
-            d.mRegOk = pp::regionsHashOk(mainData, mSz, r.data(), (int)r.size(), Murmur3Hash);
             bool allZero = true;
             for (int i = 0; i < 8; i++) {
                 uint32_t off = 0x5B3D50 + (i * 0x74A40);

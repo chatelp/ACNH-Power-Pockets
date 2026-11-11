@@ -112,6 +112,7 @@ enum EngineResult {
     ER_BACKUP_FAILED,      // "BAK ..." : nothing written to NAND, backup untrusted
     ER_NAND_FAILED,
     ER_MALLOC_FAILED,
+    ER_HASH,               // integrity-hash self-check failed before writing: nothing written
     ER_RESTORE_MISSING,
     ER_RESTORE_SIZE,
     ER_RESTORE_READ,

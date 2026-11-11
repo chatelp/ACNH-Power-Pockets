@@ -409,6 +409,7 @@ struct Ui::Impl {
     // Degraded-mode banner (items.txt missing / read-only) takes precedence.
     bool degradedBanner() {
         if (!e->editSupported) { contextBanner(S::RO_BANNER, "", true); return true; }
+        if (hashStale()) { contextBanner(S::STALE_BANNER, "", true); return true; }
         if (!itemsLoaded()) { contextBanner(S::NO_ITEMS_BANNER, "", true); return true; }
         return false;
     }
@@ -1005,6 +1006,13 @@ struct Ui::Impl {
         return std::string();
     }
     void refreshInfo() { if (e->info) { e->info(info); infoValid = true; } }
+    // True when the save on the console has a region hash that doesn't match its data: the
+    // game refuses such a save. Apply and the Save Doctor both write consistent hashes.
+    bool hashStale() {
+        if (!ready() || !e->editSupported || !e->info) return false;
+        if (!infoValid) refreshInfo();
+        return info.pRegOk < info.pRegCount || info.mRegOk < info.mRegCount;
+    }
     void drawSystem() {
         fillRound({ 56, 150, 1168, 40 }, 4, C::warnBg);
         int bx = 68;
@@ -1084,6 +1092,7 @@ struct Ui::Impl {
             case BC_READ: return S::BK_READ;
             case BC_CORRUPT: return S::BK_CORRUPT;
             case BC_NOMEM: return S::BK_NOMEM;
+            case BC_STALE_HASH: return S::BK_STALE_HASH;
             default: return "";
         }
     }
@@ -1156,6 +1165,8 @@ struct Ui::Impl {
                     if (r == ER_OK || r == ER_OK_NO_FORENSIC) {
                         snapshotBase(base, e->pockets, e->vals);
                         showError(r == ER_OK ? S::D_REPAIRED_BODY : S::D_REPAIRED_NOFOR, S::D_REPAIRED_TITLE);
+                    } else if (r == ER_HASH) {
+                        showError(S::E_HASH);                        // stopped before the repair pass: nothing written
                     } else {
                         tainted = true;                              // I7: origP no longer matches the NAND
                         showError(S::E_DOCTOR_FAILED, S::D_DOCTOR_FAILED_TITLE);
@@ -1333,6 +1344,7 @@ struct Ui::Impl {
             case ER_BACKUP_FAILED: backupTrusted = false; showError(S::E_BACKUP); break;   // I6
             case ER_NAND_FAILED: showError(S::E_NAND); break;
             case ER_MALLOC_FAILED: showError(S::E_MALLOC); break;
+            case ER_HASH: showError(S::E_HASH); break;
             default: showError(S::E_OTHER); break;
         }
         if (!modals.empty() && modals[0].kind == Modal::REVIEW) buildReviewRows(modals[0]);

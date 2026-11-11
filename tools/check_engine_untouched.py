@@ -78,7 +78,7 @@ checks = [
     ("fsFileWrite call sites", r"fsFileWrite\(", None),
     ("fsFsOpenFile with FsOpenMode_Write", r"FsOpenMode_Write", None),
     ("CryptACNH call sites (+2 allowed: backup check decrypts 2 malloc'd copies)", r"CryptACNH\(", 2),
-    ("applyEdit call sites", r"applyEdit\(", None),
+    ("applyEdit call sites (+4 allowed: finalizeBuffers pre-applies the 4 values in RAM before hashing)", r"applyEdit\(", 4),
 ]
 for label, pat, extra in checks:
     u, c = count(up, pat), count(cur, pat)

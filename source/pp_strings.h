@@ -204,6 +204,7 @@ static const char* const D_SESSION_FAIL_DIRECT = "The state before your edits co
 static const char* const D_ERR_TITLE   = "Nothing was written";
 static const char* const E_BACKUP      = "The SD backup failed (card full, locked or missing?). Nothing was written to the save. Your changes are still pending.";
 static const char* const E_NAND        = "Writing the save failed and was not committed. The console save was not changed. Your changes are still pending: try Apply again, or discard them.";
+static const char* const E_HASH        = "The integrity hashes couldn't be made consistent, so nothing was written. Your changes are still pending. Please report this.";
 static const char* const E_MALLOC      = "Not enough memory. Nothing was written. Relaunch the app through a game (hold R).";
 static const char* const E_OTHER       = "The engine reported an unexpected status. Check the save in System > Info before doing anything else.";
 static const char* const E_RO          = "This save version isn't supported (unexpected file sizes). The app is read-only.";
@@ -219,7 +220,7 @@ static const char* const D_SESSION_B1  = "The console save goes back to its stat
 static const char* const D_SESSION_B2  = "Everything applied since is lost. The regular SD backup is replaced by the pre-edit backup first.";
 static const char* const D_DOCTOR_SUB  = "Run the Save Doctor?";
 static const char* const D_DOCTOR_B1   = "Only use it if the game refuses to load the save after an edit.";
-static const char* const D_DOCTOR_B2   = "A copy of the current state goes to damaged_*.dat, then the save is rewritten right away.";
+static const char* const D_DOCTOR_B2   = "It recomputes the integrity hashes, copies the previous state to damaged_*.dat, then rewrites the save right away.";
 static const char* const D_BLOCKED_TITLE = "Not available right now";
 static const char* const D_BLOCKED_PENDING_FMT = "You have %d pending change%s. Apply them (+) or discard them (-) first.";
 static const char* const BK_MISSING    = "There is no backup on the SD card yet.";
@@ -227,6 +228,7 @@ static const char* const BK_SIZE       = "The backup doesn't match this save (di
 static const char* const BK_READ       = "The backup couldn't be read from the SD card.";
 static const char* const BK_CORRUPT    = "This backup doesn't belong to the current save: it is damaged, or the game has saved since it was made. It can't be restored.";
 static const char* const BK_NOMEM      = "Not enough memory to check the backup.";
+static const char* const BK_STALE_HASH = "This backup has a stale integrity hash: the game would refuse it. It can't be restored.";
 static const char* const D_DOCTOR_FAILED_TITLE = "Repair failed";
 static const char* const E_DOCTOR_FAILED = "The repair couldn't be written and was not committed. Quit the app completely and relaunch it before doing anything else.";
 static const char* const E_SESSION_TO_BACKUP = "The pre-edit backup couldn't be copied over the regular backup. Nothing was restored. The regular backup is now incomplete: Apply once to make a new one.";
@@ -242,10 +244,11 @@ static const char* const FATAL_HINT1   = "Fully close Animal Crossing (HOME > X 
 static const char* const FATAL_HINT2   = "through the game: hold R while starting Animal Crossing.";
 static const char* const NO_ITEMS_BANNER = "items.txt is missing: no item names (IDs shown) and no 1/slot protection.";
 static const char* const RO_BANNER     = "Unsupported save version: read-only.";
+static const char* const STALE_BANNER  = "Stale integrity hash: the game would refuse this save. Fix it with System > Save Doctor.";
 
 static const char* const SPLASH_TITLE  = "Reading the save\xE2\x80\xA6";
 static const char* const SPLASH_HINT1  = "This takes a few seconds.";
-static const char* const SPLASH_HINT2  = "After an edit, until the game has saved again, it can take several minutes. Please wait.";
+static const char* const SPLASH_HINT2  = "On a save with a stale integrity hash it can take several minutes. Please wait.";
 
 // Info pane
 static const char* const INFO_TITLE    = "Info";
