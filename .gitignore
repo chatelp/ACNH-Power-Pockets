@@ -16,4 +16,4 @@ zipstage/
 # Internal Docs & Build Folders
 ACNH_Master_Prompt.md
 *MASTER COPY KIT*.md
-icon.jpg
+# icon.jpg is versioned: the Makefile embeds it in the .nro (generated from icon.png)

@@ -31,9 +31,11 @@ BUILD       := build
 SOURCES     := source
 INCLUDES    := include
 
-APP_TITLE	:=	ACNH Save Editor
-APP_AUTHOR	:=	cbreezy210
-APP_VERSION	:=	1.4.1
+APP_TITLE	:=	ACNH Power Pockets
+APP_AUTHOR	:=	Power Pockets fork of cbreezy210
+APP_VERSION	:=	1.0.0
+# Fork of ACNH-Save-Editor 1.4.1 (upstream commit 731c228). TARGET and the SD folder
+# stay "acnh_editor" on purpose: same backups, loadouts and layout cache as upstream.
 #---------------------------------------------------------------------------------
 
 CFLAGS += -I$(DEVKITPRO)/portlibs/switch/include -DAPP_VERSION_STR=\"$(APP_VERSION)\"

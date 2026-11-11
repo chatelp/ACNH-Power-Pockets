@@ -1,0 +1,43 @@
+name: build
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  host-checks:
+    # Unit tests of the UI model, syntax check of every source file against
+    # libnx/SDL2 stubs, and the proof that the inherited save engine is unchanged.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Fetch upstream ACNH-Save-Editor
+        run: |
+          git remote add upstream https://github.com/cbreezy210/ACNH-Save-Editor.git || true
+          git fetch upstream main
+      - name: Engine untouched
+        run: python3 tools/check_engine_untouched.py upstream/main
+      - name: Host tests
+        run: CXX=clang++ sh tests/host/run.sh
+
+  switch-nro:
+    runs-on: ubuntu-latest
+    container: devkitpro/devkita64:latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Portlibs
+        run: dkp-pacman -Syu --noconfirm --needed switch-sdl2 switch-sdl2_ttf switch-freetype switch-harfbuzz switch-libpng switch-bzip2 switch-zlib switch-mesa
+      - name: Build
+        run: make -j"$(nproc)"
+      - name: Package (SD card layout)
+        run: |
+          mkdir -p dist/switch/acnh_editor
+          cp acnh_editor.nro icon.png dist/switch/acnh_editor/
+          cp assets/font.ttf assets/items.txt assets/ui_icons.png assets/nonstackable.txt dist/switch/acnh_editor/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: acnh-power-pockets
+          path: dist/

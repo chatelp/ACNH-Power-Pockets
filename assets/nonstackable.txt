@@ -1,0 +1,25 @@
+# ACNH Power Pockets - items that never stack in the game ("1/slot").
+# Copy this file to sdmc:/switch/acnh_editor/nonstackable.txt and edit it freely:
+# the app re-reads it at launch, or from System > Reload favorites and 1/slot rules.
+#
+# One rule per line:
+#   golden axe     exact item name, as in items.txt (case-insensitive)
+#   0x0A1B         item id in hex
+#   ~wand          every item whose name contains "wand"
+#   -<rule>        removes what <rule> matches (rules apply top to bottom)
+#   # comment
+#
+# Tools (axes, nets, rods, shovels, watering cans, slingshots, ladder,
+# vaulting pole) are built into the app and always flagged.
+#
+# For a 1/slot item the app shows a "1/slot" badge, never asks for a quantity,
+# and writes the neutral value 0 in the count field when placing it.
+# A slot already in your save is shown as it is and never changed by itself.
+
+# Wands
+~wand
+-Wandering
+
+# Saplings and growing plants
+~sapling
+~sprout

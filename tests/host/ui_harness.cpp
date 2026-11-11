@@ -1,0 +1,265 @@
+// Visual + flow harness for the panel UI (source/pp_ui.cpp) on macOS / Linux.
+// Renders the REAL UI with a software SDL renderer into 1280x720 BMP screenshots,
+// driven by scripted button presses, against a FAKE engine (no save involved).
+// Run through tests/host/ui_shots.sh.
+#define STB_IMAGE_IMPLEMENTATION
+#include "../../source/stb_image.h"
+#include "../../source/pp_ui.h"
+#include <switch.h>
+
+#include <SDL2/SDL.h>
+#include <cstdio>
+#include <cstring>
+#include <string>
+#include <vector>
+#include <deque>
+
+using namespace pp;
+
+static int g_fail = 0, g_pass = 0;
+#define CHECK(c) do { if (c) g_pass++; else { g_fail++; printf("  FAIL line %d: %s\n", __LINE__, #c); } } while (0)
+
+static SDL_Surface* g_surf = nullptr;
+static std::string g_out;
+static int g_shot = 0;
+
+static void shot(const char* name) {
+    char p[512];
+    snprintf(p, sizeof p, "%s/%02d-%s.bmp", g_out.c_str(), ++g_shot, name);
+    SDL_SaveBMP(g_surf, p);
+    printf("  shot %s\n", p);
+}
+static void frame(Ui& ui, uint64_t down, uint64_t held) { ui.frame(down, held); SDL_Delay(1); }
+static void press(Ui& ui, uint64_t b, int n = 1) { for (int i = 0; i < n; i++) { frame(ui, b, b); frame(ui, 0, 0); } }
+static void idle(Ui& ui, int n = 3) { for (int i = 0; i < n; i++) frame(ui, 0, 0); }
+
+static uint16_t idOf(const std::vector<Item>& items, const char* name) {
+    for (size_t i = 0; i < items.size(); i++) if (items[i].name == name) return (uint16_t)i;
+    return ID_EMPTY;
+}
+static void put(uint8_t* p, int slot, uint16_t id, uint16_t cnt) {
+    uint8_t* r = p + (slot - 1) * 8; memset(r, 0, 8);
+    r[0] = id & 0xFF; r[1] = id >> 8; r[4] = cnt & 0xFF; r[5] = cnt >> 8;
+}
+static bool copy(const std::string& a, const std::string& b) { return copyFile(a.c_str(), b.c_str()); }
+
+static const char* FAV_NAMES[] = {
+    "Nook Miles Ticket", "Bell bag", "Bell voucher", "99,000 Bells", "gold roses", "cherry-blossom petal",
+    "star fragment", "large star fragment", "star wand", "gold nugget", "iron nugget", "pearl", "gold bars",
+    "customization kit", "golden axe", "golden net", "golden rod", "golden shovel", "golden slingshot",
+    "golden watering can", "crown (No Variations)", "royal crown (No Variations)" };
+static const char* LOADOUT_NAMES[] = { "Mining", "Fishing", "Terraforming", "Custom 1", "Custom 2" };
+
+int main(int argc, char** argv) {
+    if (argc < 3) { printf("usage: ui_harness <repo-root> <out-dir>\n"); return 2; }
+    std::string root = argv[1];
+    g_out = argv[2];
+    std::string sd = g_out + "/sd/";
+    copy(root + "/assets/font.ttf", sd + "font.ttf");
+    copy(root + "/assets/icon.png", sd + "icon.png");
+    copy(root + "/assets/ui_icons.png", sd + "ui_icons.png");
+    copy(root + "/assets/nonstackable.txt", sd + "nonstackable.txt");
+
+    // items.txt, exactly like main.cpp loads it
+    std::vector<Item> items;
+    FILE* it = fopen((root + "/assets/items.txt").c_str(), "rb");
+    char line[256]; uint16_t id = 0;
+    while (it && fgets(line, sizeof line, it)) {
+        size_t n = strlen(line);
+        while (n && (line[n-1] == '\n' || line[n-1] == '\r')) line[--n] = 0;
+        items.push_back({ id++, line });
+    }
+    if (it) fclose(it);
+    CHECK(items.size() > 10000);
+
+    Favorites favs; StackRules stack;
+    favs.load(items, FAV_NAMES, 22, sd + "user_favorites.txt");
+    stack.build(items, (sd + "nonstackable.txt").c_str());
+    CHECK(stack.isSingle(idOf(items, "golden axe")) && stack.isSingle(idOf(items, "star wand")));
+    CHECK(!stack.isSingle(idOf(items, "Nook Miles Ticket")));
+
+    // Fake save: pockets + money
+    uint8_t pockets[POCKETS_BYTES];
+    for (int s = 1; s <= 20; s++) put(pockets, s, ID_EMPTY, 0);
+    put(pockets, 1, idOf(items, "golden axe"), 0);
+    put(pockets, 2, idOf(items, "Nook Miles Ticket"), 3);
+    put(pockets, 3, idOf(items, "wood"), 30);
+    put(pockets, 6, idOf(items, "golden shovel"), 0);
+    put(pockets, 11, idOf(items, "apple"), 10);
+    put(pockets, 12, idOf(items, "star wand"), 5);          // non-stackable with an odd count
+    uint32_t vals[4] = { 12345, 4800000, 230500, 98000 };
+    uint8_t loadout[POCKETS_BYTES]; memcpy(loadout, pockets, sizeof loadout);
+    put(loadout, 4, idOf(items, "iron nugget"), 30);
+    loadoutWrite((sd + "l_0.dat").c_str(), loadout);
+
+    // Fake engine. apply() reproduces what main.cpp + doSave() do with the slot vars (I2).
+    int applyCalls = 0, restoreCalls = 0, doctorCalls = 0, sessionCalls = 0;
+    int gSlot = 7; int32_t gNewId = 0x1234, gNewCount = 55;     // deliberately stale
+    uint8_t written[POCKETS_BYTES]; uint32_t writtenVals[4] = { 0, 0, 0, 0 };
+    std::deque<std::string> keyboard;
+
+    EngineHooks h;
+    h.pockets = pockets; h.vals = vals; h.items = &items; h.favorites = &favs; h.stack = &stack;
+    h.saveReady = true; h.editSupported = true; h.loadoutNames = LOADOUT_NAMES; h.loadoutCount = 5;
+    h.sdDir = sd; h.version = "1.0.0 (harness)";
+    h.apply = [&]() {
+        applyCalls++;
+        syncSaveSlotVars(pockets, gSlot, gNewId, gNewCount);
+        uint8_t out[POCKETS_BYTES]; memcpy(out, pockets, sizeof out);
+        uint8_t* r = out + (gSlot - 1) * 8;                      // doSave's extra write
+        r[0] = gNewId & 0xFF; r[1] = (gNewId >> 8) & 0xFF; r[4] = gNewCount & 0xFF; r[5] = (gNewCount >> 8) & 0xFF;
+        memcpy(written, out, sizeof written); memcpy(writtenVals, vals, sizeof writtenVals);
+        return ER_OK;
+    };
+    h.restore = [&]() { restoreCalls++; return ER_OK; };
+    h.doctor = [&]() { doctorCalls++; return ER_OK; };
+    h.checkBackup = [&](bool) { return BC_OK; };
+    h.writeSessionBackup = [&]() { sessionCalls++; return true; };
+    h.sessionToBackup = [&]() { return true; };
+    h.info = [&](InfoData& d) {
+        d.saveSizeOk = true; d.personalSize = 0x74A40; d.mainSize = 0x9B0E90;
+        d.pRegOk = 2; d.pRegCount = 2; d.mRegOk = 19; d.mRegCount = 19; d.poisonAllZero = true;
+        d.backupPersonal = 0x74A40; d.backupMain = 0x9B0E90; d.sessionPersonal = -1; d.sessionMain = -1;
+    };
+    h.keyboard = [&](const char*, const char* init) {
+        if (keyboard.empty()) return std::string(init ? init : "");
+        std::string s = keyboard.front(); keyboard.pop_front(); return s;
+    };
+    h.reloadLists = [&]() { favs.load(items, FAV_NAMES, 22, sd + "user_favorites.txt"); stack.build(items, (sd + "nonstackable.txt").c_str()); };
+
+    TTF_Init();
+    g_surf = SDL_CreateRGBSurfaceWithFormat(0, 1280, 720, 32, SDL_PIXELFORMAT_RGBA32);
+    SDL_Renderer* ren = SDL_CreateSoftwareRenderer(g_surf);
+    Ui ui;
+    CHECK(ui.init(ren, sd));
+    ui.start(h);
+    idle(ui);
+    shot("pockets-start");
+
+    const uint64_t A = HidNpadButton_A, B = HidNpadButton_B, Y = HidNpadButton_Y, L = HidNpadButton_L, R = HidNpadButton_R,
+                   UP = HidNpadButton_Up, DOWN = HidNpadButton_Down, LEFT = HidNpadButton_Left, RIGHT = HidNpadButton_Right,
+                   PLUS = HidNpadButton_Plus, MINUS = HidNpadButton_Minus, ZL = HidNpadButton_ZL, ZR = HidNpadButton_ZR;
+
+    // ZL / ZR must do nothing anymore (upstream: instant restore / Doctor).
+    press(ui, ZL); press(ui, ZR); press(ui, ZR);
+    CHECK(restoreCalls == 0 && doctorCalls == 0);
+
+    // Favorites: take Nook Miles Ticket with quantity 10, back to Pockets automatically.
+    press(ui, R); idle(ui);
+    shot("favorites");
+    int nmt = -1;
+    for (size_t i = 0; i < favs.list().size(); i++) if (favs.list()[i].label == "Nook Miles Ticket") nmt = (int)i;
+    CHECK(nmt >= 0);
+    press(ui, DOWN, nmt);
+    press(ui, A); idle(ui);
+    shot("favorites-menu");
+    press(ui, DOWN); press(ui, A); idle(ui);                // "Take with quantity..."
+    press(ui, UP); press(ui, LEFT); idle(ui);               // 1 -> 11 -> 10
+    shot("quantity-stepper");
+    press(ui, A); idle(ui);
+    shot("pockets-holding");
+
+    // 10 x Y from slot 1: only empty slots get filled, occupied ones untouched.
+    uint8_t before[POCKETS_BYTES]; memcpy(before, pockets, sizeof before);
+    press(ui, Y, 10); idle(ui);
+    shot("pockets-after-10-Y");
+    int filled = 0; bool occupiedKept = true;
+    for (int s = 1; s <= 20; s++) {
+        SlotRec b0 = readSlot(before, s), a0 = readSlot(pockets, s);
+        if (b0.id != ID_EMPTY && memcmp(before + (s - 1) * 8, pockets + (s - 1) * 8, 8) != 0) occupiedKept = false;
+        if (b0.id == ID_EMPTY && a0.id == idOf(items, "Nook Miles Ticket")) filled++;
+    }
+    CHECK(filled == 10 && occupiedKept);
+    CHECK(readSlot(pockets, 4).raw == qtyToRaw(10));
+
+    // Slot menu on an occupied slot (slot 1, golden axe).
+    press(ui, UP, 12); press(ui, LEFT); idle(ui);
+    press(ui, A); idle(ui);
+    shot("slot-menu");
+    press(ui, B); idle(ui);
+
+    // Catalog: search "golden", take golden axe (1/slot) -> quantity clamped.
+    press(ui, R, 2); press(ui, A); keyboard.push_back("golden");
+    // The first A already ran the keyboard with an empty queue; type again.
+    press(ui, A); idle(ui);
+    shot("catalog-results");
+    press(ui, DOWN); press(ui, A); idle(ui);
+    shot("catalog-menu");
+    press(ui, B);
+
+    // Bells & Miles: wallet +3,000 via the stepper.
+    press(ui, R); idle(ui);
+    press(ui, Y); press(ui, RIGHT, 3); idle(ui);
+    shot("money-stepper");
+    press(ui, A); idle(ui);
+    CHECK(vals[0] == 15345);
+    vals[0] = 150000; press(ui, DOWN); press(ui, UP); idle(ui);   // above the game's wallet max
+    shot("money-wallet-warning");
+
+    // Loadouts
+    press(ui, R); idle(ui);
+    shot("loadouts");
+
+    // System: restore is blocked while changes are pending.
+    press(ui, R); idle(ui);
+    shot("system-blocked");
+    press(ui, A); idle(ui);
+    shot("system-blocked-dialog");
+    press(ui, B); idle(ui);
+    CHECK(restoreCalls == 0);
+
+    // Review and Apply (exactly one engine call; doSave's extra write is a no-op).
+    press(ui, PLUS); idle(ui);
+    shot("review");
+    uint8_t expect[POCKETS_BYTES]; memcpy(expect, pockets, sizeof expect);
+    uint32_t expectVals[4]; memcpy(expectVals, vals, sizeof expectVals);
+    press(ui, A); idle(ui, 2);                              // "Apply" is focused
+    shot("writing");
+    idle(ui, 4);
+    shot("applied-toast");
+    CHECK(applyCalls == 1 && sessionCalls >= 1);
+    CHECK(memcmp(written, expect, sizeof expect) == 0);
+    CHECK(memcmp(writtenVals, expectVals, sizeof expectVals) == 0);
+
+    // Now restore is allowed: danger dialog + hold A 1.5 s.
+    press(ui, A); idle(ui);
+    shot("danger-dialog");
+    press(ui, RIGHT); idle(ui);
+    for (int i = 0; i < 50; i++) { frame(ui, i == 0 ? A : 0, A); SDL_Delay(14); }
+    shot("danger-hold-gauge");
+    CHECK(restoreCalls == 0);                               // not yet: < 1.5 s
+    for (int i = 0; i < 80 && restoreCalls == 0; i++) { frame(ui, 0, A); SDL_Delay(16); }
+    frame(ui, 0, 0); idle(ui, 4);
+    CHECK(restoreCalls == 1);
+    shot("restored");
+
+    // Discard: change, then minus.
+    press(ui, L, 5); idle(ui);
+    press(ui, DOWN, 2); press(ui, A); idle(ui);
+    int clearIdx = 7;                                        // "Clear slot" is the last entry (9 entries)
+    press(ui, DOWN, clearIdx + 1); press(ui, A); idle(ui);
+    CHECK(slotEmpty(pockets, 3));
+    press(ui, MINUS); idle(ui);
+    shot("discard-dialog");
+    press(ui, RIGHT); press(ui, A); idle(ui);
+    CHECK(!slotEmpty(pockets, 3));
+
+    // Quit with pending changes asks first.
+    press(ui, Y); idle(ui);
+    press(ui, PLUS); press(ui, LEFT, 2); idle(ui);          // Apply -> (wrap) Back -> Quit without applying
+    press(ui, A); idle(ui);
+    shot("quit-dialog");
+    press(ui, B); idle(ui);                                  // "Stay": nothing quits, nothing is written
+    CHECK(applyCalls == 1);
+    CHECK(ui.frame(0, 0));
+
+    // Fatal screen (save not mounted)
+    EngineHooks f; f.saveReady = false; f.fatalError = "Mount failed! Close ACNH fully first.";
+    Ui ui2; ui2.init(ren, sd); ui2.start(f); idle(ui2);
+    shot("fatal");
+    ui2.shutdown();
+
+    ui.shutdown();
+    printf("\n%d passed, %d failed\n", g_pass, g_fail);
+    return g_fail ? 1 : 0;
+}

@@ -1,0 +1,93 @@
+/* ACNH Power Pockets — maquettes 1280×720.
+   Tokens identiques à docs/design/CHARTE.md §2. Rendu volontairement « SDL » :
+   rectangles pleins, texte, PNG ; coins ≤ 8 px ; aucune ombre floue ni dégradé. */
+
+@font-face {
+  font-family: "PP Varela";
+  src: url("font.ttf") format("truetype"), url("../../../assets/font.ttf") format("truetype");
+}
+
+:root {
+  --bg-leaf: #7AC143;
+  --bg-leaf-dots: #6FB739;
+  --surface-panel: #F8F5EC;
+  --surface-alt: #F1EBDD;
+  --surface-sunken: #E6DCC3;
+  --line-soft: #DDD0B4;
+  --wood: #7A5C3E;
+  --wood-dark: #5C4430;
+  --wood-ink: #EADFC8;
+  --wood-mute: #A88C6C;
+  --text-primary: #5A4029;
+  --text-secondary: #7A5C3E;
+  --text-muted: #8A6E4F;
+  --ink-strong: #3B2A1A;
+  --select-bg: #3F7A2E;
+  --select-ink: #F8F5EC;
+  --tab-idle: #8B6B47;
+  --modified: #E8A33D;
+  --modified-ink: #A65F00;
+  --warn: #F2C14E;
+  --warn-bg: #FCEFC7;
+  --warn-ink: #7A4B00;
+  --error: #C0392B;
+  --error-bg: #F9E1DD;
+  --error-ink: #A32F23;
+  --ok: #2E7D32;
+  --ok-bg: #E3F1E0;
+  --ok-ink: #256B29;
+  --disabled-ink: #B8AC98;
+  --badge-fav: #F2B705;
+  --badge-single-bg: #FCE3C2;
+  --badge-single-ink: #8C3A10;
+  --veil: rgba(42, 30, 18, 0.6);   /* #2A1E12 alpha 153 */
+  --veil-light: rgba(42, 30, 18, 0.31); /* alpha 80 */
+  --font: "PP Varela", "Varela Round", "Arial Rounded MT Bold", "Nunito", sans-serif;
+}
+
+.screen {
+  position: relative; width: 1280px; height: 720px; overflow: hidden;
+  background-color: var(--bg-leaf);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='48' height='48'%3E%3Crect x='20' y='20' width='8' height='8' fill='%236FB739'/%3E%3C/svg%3E");
+  font-family: var(--font); color: var(--text-primary);
+  transform-origin: 0 0; flex: none;
+}
+.screen * { box-sizing: border-box; }
+.a { position: absolute; }
+.t { position: absolute; white-space: nowrap; }
+.r2 { border-radius: 2px; } .r4 { border-radius: 4px; } .r8 { border-radius: 8px; }
+.rt4 { border-radius: 4px 4px 0 0; }
+
+/* Échelle typographique (CHARTE §3.2) : taille / hauteur TTF_FontHeight */
+.f-display { font-size: 32px; line-height: 39px; }
+.f-title   { font-size: 28px; line-height: 34px; }
+.f-body    { font-size: 24px; line-height: 29px; }
+.f-small   { font-size: 20px; line-height: 24px; }
+.f-micro   { font-size: 16px; line-height: 19px; }
+
+.c-primary { color: var(--text-primary); } .c-secondary { color: var(--text-secondary); }
+.c-select { color: var(--select-ink); } .c-woodink { color: var(--wood-ink); } .c-woodmute { color: var(--wood-mute); }
+.c-wooddark { color: var(--wood-dark); } .c-strong { color: var(--ink-strong); }
+.c-mod { color: var(--modified-ink); } .c-disabled { color: var(--disabled-ink); }
+.c-error { color: var(--error); } .c-ok { color: var(--ok-ink); } .c-warn { color: var(--warn-ink); }
+
+/* Keycap (CHARTE §6.10) */
+.key { position: absolute; display: flex; align-items: center; justify-content: center;
+  height: 32px; background: var(--surface-panel); color: var(--wood-dark);
+  font-size: 20px; line-height: 24px; border-radius: 4px; }
+.key.face { width: 32px; border-radius: 8px; }
+.key.off { background: var(--wood-dark); color: var(--wood-ink); }
+
+/* Badges (CHARTE §6.6) */
+.badge { position: absolute; height: 24px; padding: 0 8px; border-radius: 2px;
+  font-size: 16px; line-height: 24px; white-space: nowrap; }
+.b-single { background: var(--badge-single-bg); color: var(--badge-single-ink); }
+.b-sd { background: var(--surface-sunken); color: var(--text-primary); }
+.b-now { background: var(--error-bg); color: var(--error-ink); }
+
+.icon { position: absolute; display: block; }
+
+/* Pages autonomes : centrage + mise à l'échelle */
+body.standalone { margin: 0; min-height: 100vh; background: #2A1E12; display: flex;
+  align-items: flex-start; justify-content: center; overflow: hidden; }
+body.standalone .stage { position: relative; }

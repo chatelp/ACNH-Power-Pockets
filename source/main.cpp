@@ -13,6 +13,11 @@
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
 
+// ACNH Power Pockets: UI model + panel UI. The save engine below is unchanged
+// from upstream ACNH-Save-Editor; see docs/engine/AUDIT_ECRITURE.md.
+#include "pp_model.h"
+#include "pp_ui.h"
+
 // ================= v1.2 DUAL-FILE SAVE ENGINE =================
 struct XorShift128 {
     uint32_t a, b, c, d;
@@ -138,8 +143,9 @@ const uint32_t MILES_OFF  = 0x12718;
 const uint32_t LOAN_OFF   = 0x33CBF0;
 const uint32_t POCKETS_BASE = 0x37CA8;
 
-// ================= UPDATED: Paginated Favorites (Resolved by Name, A-Z) =================
-struct Fav { uint16_t id; const char* label; };
+// ================= Built-in favorites (resolved by name at boot, A-Z) =================
+// Power Pockets keeps this list as the base and overlays user_favorites.txt on top
+// (see pp::Favorites). Unresolved names are hidden instead of showing ID FFFE.
 static const char* FAV_NAMES[] = {
     "Nook Miles Ticket",
     "Bell bag",
@@ -165,14 +171,9 @@ static const char* FAV_NAMES[] = {
     "royal crown (No Variations)"
 };
 static const int FAV_MAX = (int)(sizeof(FAV_NAMES) / sizeof(FAV_NAMES[0]));
-static Fav FAVS[FAV_MAX];
-static int FAV_COUNT = 0;
 
 static const char* LOADOUT_NAMES[] = {"Mining", "Fishing", "Terraforming", "Custom 1", "Custom 2"};
 static const int LOADOUT_COUNT = 5;
-static bool g_loadoutExists[5] = {false};
-static int g_loadoutCount[5] = {0};
-static int g_loadoutSel = 0;
 
 static void applyEdit(uint8_t* p, uint32_t off, uint32_t value) {
     uint16_t adjust = (uint16_t)(p[off+4] | (p[off+5] << 8));
@@ -208,65 +209,13 @@ static bool backupToSd(const uint8_t* pers, size_t pSz, const uint8_t* main, siz
     return ok;
 }
 
-// ================= NEW: Item Database & Search Globals =================
-struct Item {
-    uint16_t id;
-    std::string name;
-};
+// ================= Item database (UI) =================
+using pp::Item;
 static std::vector<Item> g_allItems;
-static std::vector<Item> g_searchResults;
-static std::string g_searchQuery = "";
-static int g_searchSel = 0;
 
-// ================= NEW: Dynamic Favorites Builder (Alphabetical) =================
-uint16_t findItemIdByName(const std::string& name) {
-    for (const auto& item : g_allItems) {
-        if (item.name == name) return item.id;
-    }
-    return 0xFFFE; // Fallback to empty slot if not found
-}
-
-static bool favAlphaLess(const Fav& a, const Fav& b) {
-    const char* pa = a.label;
-    const char* pb = b.label;
-    while (*pa && *pb) {
-        char ca = (char)std::tolower((unsigned char)*pa);
-        char cb = (char)std::tolower((unsigned char)*pb);
-        if (ca != cb) return ca < cb;
-        pa++; pb++;
-    }
-    return (*pa == '\0') && (*pb != '\0');
-}
-
-void buildFavorites() {
-    FAV_COUNT = FAV_MAX;
-    for (int i = 0; i < FAV_COUNT; i++) {
-        FAVS[i].label = FAV_NAMES[i];
-        FAVS[i].id = findItemIdByName(FAV_NAMES[i]);
-    }
-    std::sort(FAVS, FAVS + FAV_COUNT, favAlphaLess);
-}
-
-// ================= UPDATED: Dynamic Status Buffer =================
+// Engine status buffer: doSave / restore / Doctor report their outcome here.
+// The UI parses it (pp::parse*Status) instead of displaying it raw.
 static char g_status_buf[128] = "Ready. ZL restores backup. (+) Search, (A) Save/Quit";
-static const char* g_status = g_status_buf;
-
-// ================= NEW: Fast Item Name Lookup =================
-static const char* itemName(int id) {
-    static char buf[96];
-    if (id < 0 || id >= (int)g_allItems.size()) {
-        snprintf(buf, sizeof(buf), "Unknown (%04X)", id);
-        return buf;
-    }
-    const char* name = g_allItems[id].name.c_str();
-    if (name[0] == '\0') {
-        snprintf(buf, sizeof(buf), "Unnamed (%04X)", id);
-        return buf;
-    }
-    strncpy(buf, name, 95);
-    buf[95] = '\0';
-    return buf;
-}
 
 // ================= NEW: Native Switch Keyboard Wrapper =================
 static std::string showKeyboard(const char* guideText, const char* initialText) {
@@ -287,154 +236,13 @@ static std::string showKeyboard(const char* guideText, const char* initialText) 
     return initialText ? std::string(initialText) : "";
 }
 
-// ================= GRAPHICS SHELL =================
+// ================= Engine state shared with the UI =================
 static SDL_Renderer* g_ren = nullptr;
-static TTF_Font* fTitle = nullptr, *fLine = nullptr, *fSmall = nullptr;
-static SDL_Texture* makeText(TTF_Font* f, const char* s, SDL_Color c) {
-    if (!f) return nullptr;
-    SDL_Surface* surf = TTF_RenderUTF8_Blended(f, s, c);
-    if (!surf) return nullptr;
-    SDL_Texture* t = SDL_CreateTextureFromSurface(g_ren, surf);
-    SDL_FreeSurface(surf); return t;
-}
-
-struct UiItem { SDL_Texture* t; int x, y; };
-static std::vector<UiItem> ui;
-static SDL_Rect hl = { 0, 0, 0, 0 };
-static bool hlOn = false;
-
+// g_vals: working money values. g_slot/g_newId/g_newCount: written by doSave()
+// into one slot; pp::syncSaveSlotVars() makes that write a no-op (invariant I2).
 static uint32_t g_vals[4] = { 0, 0, 0, 0 };
 static int g_slot = 1;
 static int32_t g_newId = 0, g_newCount = 1;
-static int g_sel = 0;
-static int g_screen = 0;
-static int g_favSel = 0;
-static int g_favCount = 1;
-static bool g_repairArmed = false;
-
-static void addText(TTF_Font* f, const char* s, SDL_Color c, int x, int y) {
-    SDL_Texture* t = makeText(f, s, c); if (t) ui.push_back({ t, x, y });
-}
-
-static void buildUI(uint8_t* personal) {
-    for (auto& it : ui) SDL_DestroyTexture(it.t);
-    ui.clear();
-    hlOn = false;
-    SDL_Color cream = { 0xF8, 0xF5, 0xEC, 255 }, brown = { 0x7A, 0x5C, 0x3E, 255 };
-    SDL_Color red = { 0xC0, 0x39, 0x2B, 255 }, okc = { 0x2E, 0x7D, 0x32, 255 };
-    char buf[192];
-
-    if (g_screen == 0) {
-        int y = 220; const int LH = 40;
-        auto line = [&](int idx, const char* text) {
-            if (idx == g_sel) { hl = { 210, y - 6, 860, 36 }; hlOn = true; addText(fLine, text, cream, 234, y); }
-            else { addText(fLine, text, brown, 234, y); }
-            y += LH;
-        };
-        snprintf(buf, sizeof buf, "Wallet: %u", (unsigned)g_vals[0]); line(0, buf);
-        snprintf(buf, sizeof buf, "Bank:   %u", (unsigned)g_vals[1]); line(1, buf);
-        snprintf(buf, sizeof buf, "Miles:  %u", (unsigned)g_vals[2]); line(2, buf);
-        snprintf(buf, sizeof buf, "Loan:   %u", (unsigned)g_vals[3]); line(3, buf);
-        snprintf(buf, sizeof buf, "Slot:   %d/20", g_slot); line(4, buf);
-        const char* nm = itemName(g_newId);
-        if (g_newId == 0xFFFE) nm = "(empty slot)"; else if (!nm[0]) nm = "(unnamed)";
-        snprintf(buf, sizeof buf, "Item:   %04X  %s", (unsigned)(uint16_t)g_newId, nm); line(5, buf);
-        snprintf(buf, sizeof buf, "Count:  %d", (int)g_newCount); line(6, buf);
-        line(7, "Quit App"); 
-        
-        // FIXED: Centered footer text fitting perfectly in the 900px wide panel
-        addText(fSmall, "Up/Dn select | < > step | L R big step", brown, 360, 540);
-        addText(fSmall, "A save/quit | - clear | X favs | Y loads | + search", brown, 320, 570);
-    } else if (g_screen == 1) {
-        // ================= UPDATED: Paginated Favorites Rendering =================
-        int y = 220; const int LH = 38;
-        int startIdx = (g_favSel / 8) * 8;
-        int endIdx = std::min(FAV_COUNT, startIdx + 8);
-        for (int i = startIdx; i < endIdx; i++) {
-            char linebuf[96];
-            snprintf(linebuf, sizeof(linebuf), "%04X - %s", (unsigned)FAVS[i].id, FAVS[i].label);
-            if (i == g_favSel) { hl = { 210, y - 4, 860, 32 }; hlOn = true; addText(fSmall, linebuf, cream, 234, y); }
-            else { addText(fSmall, linebuf, brown, 234, y); }
-            y += LH;
-        }
-        int page = (g_favSel / 8) + 1;
-        int pages = (FAV_COUNT + 7) / 8;
-        snprintf(buf, sizeof buf, "Count: %d  Pg %d/%d  |  < > count  A slot  X back", g_favCount, page, pages);
-        addText(fSmall, buf, brown, 300, 570);
-    } else if (g_screen == 2) {
-        int y0 = 220; const int LH = 30;
-        for (int s = 1; s <= 20; s++) {
-            int col = (s <= 10) ? 0 : 1;
-            int row = (s <= 10) ? (s - 1) : (s - 11);
-            int x = col ? 640 : 234;
-            int y = y0 + row * LH;
-            const uint8_t* rec = personal + POCKETS_BASE + (s - 1) * 8;
-            uint16_t id = LE16(rec); uint16_t cnt = LE16(rec + 4);
-            char linebuf[64];
-            if (id == 0xFFFE) snprintf(linebuf, sizeof linebuf, "%2d (empty)", s);
-            else snprintf(linebuf, sizeof linebuf, "%2d %-16.16s x%d", s, itemName(id), cnt);
-            if (s == g_slot) { hl = { x - 8, y - 4, 380, 28 }; hlOn = true; addText(fSmall, linebuf, cream, x, y); }
-            else addText(fSmall, linebuf, brown, x, y);
-        }
-        const char* pnm = itemName(g_newId);
-        snprintf(buf, sizeof buf, "Inject: %-16.16s x%d   |   X back   A save   + exit", pnm, (int)g_newCount);
-        addText(fSmall, buf, brown, 234, 570);
-    } else if (g_screen == 3) {
-        int y = 220; const int LH = 40;
-        for (int i = 0; i < LOADOUT_COUNT; i++) {
-            char linebuf[80];
-            if (g_loadoutExists[i]) snprintf(linebuf, sizeof(linebuf), "%-12s [Saved - %d/20 items]", LOADOUT_NAMES[i], g_loadoutCount[i]);
-            else snprintf(linebuf, sizeof(linebuf), "%-12s [Empty]", LOADOUT_NAMES[i]);
-            if (i == g_loadoutSel) { hl = { 210, y - 6, 860, 36 }; hlOn = true; addText(fLine, linebuf, cream, 234, y); }
-            else { addText(fLine, linebuf, brown, 234, y); }
-            y += LH;
-        }
-        addText(fSmall, "Up/Dn select  A Save to SD  B Load from SD  X back  + exit", brown, 234, 570);
-    } else if (g_screen == 4) { // Search Screen
-        int y = 220; const int LH = 38;
-        char searchBuf[128];
-        snprintf(searchBuf, sizeof(searchBuf), "Search: [ %s ]  (Press A to type)", g_searchQuery.c_str());
-        addText(fLine, searchBuf, brown, 234, y);
-        y += 50;
-
-        if (g_searchQuery.length() > 0) {
-            snprintf(searchBuf, sizeof(searchBuf), "Found %zu items:", g_searchResults.size());
-            addText(fSmall, searchBuf, brown, 234, y);
-            y += 35;
-
-            int startIdx = (g_searchSel / 6) * 6;
-            int endIdx = std::min((int)g_searchResults.size(), startIdx + 6);
-            
-            for (int i = startIdx; i < endIdx; i++) {
-                char linebuf[128];
-                const char* fullName = g_searchResults[i].name.c_str();
-                char truncatedName[40];
-                strncpy(truncatedName, fullName, 39);
-                truncatedName[39] = '\0';
-                
-                snprintf(linebuf, sizeof(linebuf), "%04X - %.39s", g_searchResults[i].id, truncatedName);
-                if (i == g_searchSel) {
-                    hl = { 210, y - 4, 860, 32 };
-                    hlOn = true;
-                    addText(fSmall, linebuf, cream, 234, y);
-                } else {
-                    addText(fSmall, linebuf, brown, 234, y);
-                }
-                y += LH;
-            }
-            snprintf(searchBuf, sizeof(searchBuf), "Up/Dn navigate | A select | B/+ cancel");
-            addText(fSmall, searchBuf, brown, 360, 570);
-        } else {
-            addText(fSmall, "Type a query to search the full item database.", brown, 234, y + 20);
-            addText(fSmall, "Press A to open the keyboard.", brown, 234, y + 50);
-        }
-    }
-
-    SDL_Color sc = cream;
-    if (strstr(g_status, "fail") || strstr(g_status, "BAK") || strstr(g_status, "Mount") || strstr(g_status, "FAILED") || strstr(g_status, "ERR")) sc = red;
-    else if (strncmp(g_status, "SAVED", 5) == 0 || strncmp(g_status, "Saved", 5) == 0 || strncmp(g_status, "Loaded", 6) == 0 || strncmp(g_status, "RESTORED", 8) == 0 || strncmp(g_status, "Selected", 8) == 0 || strncmp(g_status, "REPAIRED", 8) == 0) sc = okc;
-    addText(fSmall, g_status, sc, 234, 630);
-}
 
 int main(int argc, char** argv) {
     // --- APPLET MODE GUARD ---
@@ -445,7 +253,7 @@ int main(int argc, char** argv) {
 
     if (appletGetAppletType() != AppletType_Application) {
         consoleClear();
-        printf("\x1b[31m\n\n  !! ACNH SAVE EDITOR - LAUNCH ERROR !!\x1b[0m\n\n");
+        printf("\x1b[31m\n\n  !! ACNH POWER POCKETS - LAUNCH ERROR !!\x1b[0m\n\n");
         printf("  You launched from the Album (Applet Mode).\n");
         printf("  This app needs full RAM + SD access to work safely.\n\n");
         printf("  HOW TO FIX:\n");
@@ -465,28 +273,36 @@ int main(int argc, char** argv) {
         consoleExit(NULL);
         return 0;
     }
+
+    // --- Power Pockets: missing font guard (upstream showed a blank green screen) ---
+    if (!pp::fileExists("sdmc:/switch/acnh_editor/font.ttf")) {
+        consoleClear();
+        printf("\x1b[31m\n\n  !! ACNH POWER POCKETS - MISSING FILE !!\x1b[0m\n\n");
+        printf("  font.ttf was not found in sdmc:/switch/acnh_editor/\n");
+        printf("  Copy font.ttf (and items.txt) from the release zip into that folder.\n\n");
+        printf("  Nothing was read or written. Press [A] to exit.\n");
+        consoleUpdate(NULL);
+        while (appletMainLoop()) {
+            padUpdate(&guard_pad);
+            if (padGetButtonsDown(&guard_pad) & HidNpadButton_A) break;
+            consoleUpdate(NULL);
+            svcSleepThread(16000000);
+        }
+        consoleExit(NULL);
+        return 0;
+    }
     consoleExit(NULL);
     // -------------------------
 
     SDL_Init(SDL_INIT_VIDEO);
-    SDL_Window* win = SDL_CreateWindow("ACNH SE", 0, 0, 1280, 720, SDL_WINDOW_FULLSCREEN);
+    SDL_Window* win = SDL_CreateWindow("ACNH Power Pockets", 0, 0, 1280, 720, SDL_WINDOW_FULLSCREEN);
     g_ren = SDL_CreateRenderer(win, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
     TTF_Init();
-    fTitle = TTF_OpenFont("sdmc:/switch/acnh_editor/font.ttf", 40);
-    fLine  = TTF_OpenFont("sdmc:/switch/acnh_editor/font.ttf", 28);
-    fSmall = TTF_OpenFont("sdmc:/switch/acnh_editor/font.ttf", 24);
+    const std::string sdDir = "sdmc:/switch/acnh_editor/";
+    pp::Ui ui;
+    ui.init(g_ren, sdDir);
 
-    SDL_Color creamC = { 0xF8, 0xF5, 0xEC, 255 };
-    SDL_Texture* title = makeText(fTitle, "ACNH Save Editor v" APP_VERSION_STR, creamC);
-    int titleW = 0, titleH = 0;
-    if (title) SDL_QueryTexture(title, nullptr, nullptr, &titleW, &titleH);
-
-    SDL_Texture* icon = nullptr;
-    { int iw=0,ih=0,c=0; unsigned char* px = stbi_load("sdmc:/switch/acnh_editor/icon.png", &iw, &ih, &c, 4);
-      if (px) { icon = SDL_CreateTexture(g_ren, SDL_PIXELFORMAT_RGBA32, SDL_TEXTUREACCESS_STATIC, iw, ih);
-                SDL_UpdateTexture(icon, nullptr, px, iw * 4); SDL_SetTextureBlendMode(icon, SDL_BLENDMODE_BLEND); stbi_image_free(px); } }
-
-    // NEW: Optimized items.txt loading
+    // items.txt: one name per line, the item ID is the line index (unchanged format).
     FILE* it = fopen("sdmc:/switch/acnh_editor/items.txt", "rb");
     if (it) {
         char line[256];
@@ -501,10 +317,14 @@ int main(int argc, char** argv) {
             id++;
         }
         fclose(it);
-        buildFavorites(); // Resolve IDs dynamically at boot
-    } else {
-        snprintf(g_status_buf, sizeof(g_status_buf), "No items.txt on SD!");
     }
+    pp::Favorites favorites;
+    pp::StackRules stackRules;
+    auto reloadLists = [&]() {
+        favorites.load(g_allItems, FAV_NAMES, FAV_MAX, sdDir + "user_favorites.txt");
+        stackRules.build(g_allItems, (sdDir + "nonstackable.txt").c_str());
+    };
+    reloadLists();
 
     FsFileSystem fs; FsSaveDataAttribute attr; memset(&attr, 0, sizeof(attr));
     attr.application_id = 0x01006F8002326000ull; attr.save_data_type = 3;
@@ -592,30 +412,6 @@ int main(int argc, char** argv) {
 
     padConfigureInput(1, HidNpadStyleSet_NpadStandard);
     PadState pad; padInitializeDefault(&pad);
-    bool needDraw = true; int hf = 0;
-
-    auto checkLoadouts = [&]() {
-        for (int i = 0; i < LOADOUT_COUNT; i++) {
-            char path[96]; snprintf(path, sizeof(path), "sdmc:/switch/acnh_editor/l_%d.dat", i);
-            g_loadoutExists[i] = false;
-            g_loadoutCount[i] = 0;
-            FILE* f = fopen(path, "rb");
-            if (f) {
-                g_loadoutExists[i] = true;
-                uint8_t tmp[160];
-                size_t rd = fread(tmp, 1, 160, f);
-                if (rd == 160) {
-                    int n = 0;
-                    for (int s2 = 0; s2 < 20; s2++) {
-                        uint16_t idv = LE16(tmp + s2 * 8);
-                        if (idv != 0xFFFE) n++;
-                    }
-                    g_loadoutCount[i] = n;
-                }
-                fclose(f);
-            }
-        }
-    };
 
     auto doSave = [&]() {
         if (!backupToSd(origP, pSz, origM, mSz)) { snprintf(g_status_buf, sizeof(g_status_buf), "%s", bakMsg); }
@@ -662,62 +458,14 @@ int main(int argc, char** argv) {
         }
     };
 
-    while (appletMainLoop()) {
-        padUpdate(&pad); u64 k = padGetButtonsDown(&pad); u64 held = padGetButtons(&pad);
-        
-        // UPDATED: Plus button now toggles Search Screen instead of quitting
-        if (k & HidNpadButton_Plus) {
-            if (g_screen == 4) {
-                g_screen = 0; // Close search
-                needDraw = true;
-            } else {
-                g_screen = 4; // Open search
-                g_searchQuery = "";
-                g_searchResults.clear();
-                g_searchSel = 0;
-                needDraw = true;
-            }
-        }
-
-        if (held & (HidNpadButton_Left|HidNpadButton_Right|HidNpadButton_L|HidNpadButton_R)) {
-            hf++; if (hf > 20 && (hf % 5 == 0)) k |= held & (HidNpadButton_Left|HidNpadButton_Right|HidNpadButton_L|HidNpadButton_R);
-        } else hf = 0;
-
-        if (personal && pHdr && mainData && mHdr && origP && origM) {
-            if (k & HidNpadButton_X) {
-                if (g_screen == 0) g_screen = 1;
-                else if (g_screen == 1) g_screen = 0;
-                else if (g_screen == 2) g_screen = 1;
-                else g_screen = 0;
-                needDraw = true;
-            }
-            if (k & HidNpadButton_Y && g_screen == 0) {
-                g_screen = 3;
-                checkLoadouts();
-                needDraw = true;
-            }
-
-            int64_t d = 0, big = 0;
-            if (k & HidNpadButton_Left) d = -1;
-            if (k & HidNpadButton_Right) d = +1;
-            if (k & HidNpadButton_L) big = -1;
-            if (k & HidNpadButton_R) big = +1;
-
-            if (g_screen == 0) {
-                if (k & HidNpadButton_Up)   { g_sel = (g_sel + 7) % 8; needDraw = true; } // Updated for 8 items
-                if (k & HidNpadButton_Down) { g_sel = (g_sel + 1) % 8; needDraw = true; }
-
-                if (k & HidNpadButton_Minus) {
-                    g_newId = 0xFFFE;
-                    g_newCount = 0;
-                    uint8_t* pr = personal + POCKETS_BASE + (g_slot - 1) * 8;
-                    WriteLE16(pr, 0xFFFE);
-                    WriteLE16(pr + 4, 0);
-                    snprintf(g_status_buf, sizeof(g_status_buf), "Slot cleared! Press A to save to NAND.");
-                    needDraw = true;
-                }
-
-                if (k & HidNpadButton_ZL) {
+    // ======================================================================
+    // Power Pockets: the two blocks below are MOVED VERBATIM from the upstream
+    // input loop (ZL handler, and the second ZR press of the Save Doctor).
+    // Not a single instruction was changed; the original indentation is kept
+    // on purpose so `git diff --color-moved` shows a pure move. Only the trigger
+    // changed: System panel + danger dialog instead of a raw trigger press.
+    // ======================================================================
+    auto doRestore = [&]() {
                     FILE* fp = fopen("sdmc:/switch/acnh_editor/backup_personal.dat", "rb");
                     FILE* fm = fopen("sdmc:/switch/acnh_editor/backup_main.dat", "rb");
                     if (!fp || !fm) {
@@ -766,16 +514,9 @@ int main(int argc, char** argv) {
                     }
                     if (fp) fclose(fp);
                     if (fm) fclose(fm);
-                    needDraw = true;
-                }
+    };
 
-                // ---- SAVE DOCTOR (v1.4.1): ZR = repair pass ----
-                if (k & HidNpadButton_ZR) {
-                    if (!g_repairArmed) {
-                        g_repairArmed = true;
-                        snprintf(g_status_buf, sizeof(g_status_buf), "DOCTOR armed (%d p-regs)! ZR=repair, B=cancel", pRegC);
-                    } else {
-                        g_repairArmed = false;
+    auto doDoctor = [&]() {
                         // 1) FORENSIC COPY of damaged encrypted state (never touches good backups)
                         FsFileSystem sd2; bool forensics = false;
                         if (R_SUCCEEDED(fsOpenSdCardFileSystem(&sd2))) {
@@ -810,173 +551,132 @@ int main(int argc, char** argv) {
                         CryptACNH(pHdr, personal, pSz); CryptACNH(mHdr, mainData, mSz);
                         if (ok) snprintf(g_status_buf, sizeof(g_status_buf), forensics ? "REPAIRED! Quit fully, then try the game." : "REPAIRED (no forensic copy) - quit & try game");
                         else snprintf(g_status_buf, sizeof(g_status_buf), "Repair NAND write failed!");
-                    }
-                    needDraw = true;
-                }
-                if ((k & HidNpadButton_B) && g_repairArmed) {
-                    g_repairArmed = false;
-                    snprintf(g_status_buf, sizeof(g_status_buf), "Doctor disarmed.");
-                    needDraw = true;
-                }
-                // ---- end SAVE DOCTOR ----
+    };
 
-                if (d || big) {
-                    if (g_sel <= 3) {
-                        int64_t maxv = 999999999;
-                        if (g_sel == 2 || g_sel == 3) maxv = 9999999;
-                        int64_t nv = (int64_t)g_vals[g_sel] + d * 1000 + big * 100000;
-                        if (nv < 0) nv = 0;
-                        if (nv > maxv) nv = maxv;
-                        g_vals[g_sel] = (uint32_t)nv;
-                    } else if (g_sel == 4) {
-                        int ns = g_slot + (int)(d + big * 5); if (ns < 1) ns = 1; if (ns > 20) ns = 20;
-                        if (ns != g_slot) { g_slot = ns; const uint8_t* r2 = personal + POCKETS_BASE + (g_slot - 1) * 8; g_newId = LE16(r2); g_newCount = LE16(r2 + 4); }
-                    } else if (g_sel == 5) {
-                        int64_t nv = g_newId + d + big * 256; if (nv < 0) nv = 0; if (nv > 65534) nv = 65534; g_newId = (int32_t)nv;
-                    } else if (g_sel == 6) {
-                        int64_t nv = g_newCount + d + big * 10; if (nv < 1) nv = 1; if (nv > 99) nv = 99; g_newCount = (int32_t)nv;
-                    }
-                    needDraw = true;
-                }
-                if (k & HidNpadButton_A) { 
-                    if (g_sel == 7) {
-                        break; // Quit app
-                    } else {
-                        doSave(); 
-                    }
-                    needDraw = true; 
-                }
-            } else if (g_screen == 1) {
-                if (k & HidNpadButton_Up)   { g_favSel = (g_favSel + FAV_COUNT - 1) % FAV_COUNT; needDraw = true; }
-                if (k & HidNpadButton_Down) { g_favSel = (g_favSel + 1) % FAV_COUNT; needDraw = true; }
-                if (d || big) {
-                    int nv = g_favCount + (int)(d + big * 10);
-                    if (nv < 1) nv = 1;
-                    if (nv > 99) nv = 99;
-                    g_favCount = nv;
-                    needDraw = true;
-                }
-                if (k & HidNpadButton_A) {
-                    g_newId = FAVS[g_favSel].id;
-                    g_newCount = g_favCount;
-                    g_screen = 2;
-                    needDraw = true;
-                }
-            } else if (g_screen == 2) {
-                if (k & HidNpadButton_Up)   { if (g_slot > 1) g_slot--; needDraw = true; }
-                if (k & HidNpadButton_Down) { if (g_slot < 20) g_slot++; needDraw = true; }
-                if (d || big) {
-                    int ns = g_slot + (int)(d + big) * 10;
-                    if (ns < 1) ns = 1;
-                    if (ns > 20) ns = 20;
-                    if (ns != g_slot) { g_slot = ns; needDraw = true; }
-                }
-                if (k & HidNpadButton_A) { doSave(); needDraw = true; }
-            } else if (g_screen == 3) {
-                if (k & HidNpadButton_Up)   { g_loadoutSel = (g_loadoutSel + LOADOUT_COUNT - 1) % LOADOUT_COUNT; needDraw = true; }
-                if (k & HidNpadButton_Down) { g_loadoutSel = (g_loadoutSel + 1) % LOADOUT_COUNT; needDraw = true; }
+    // ======================================================================
+    // UI hooks. They only call the engine blocks above, unchanged.
+    // ======================================================================
+    const bool saveReady = personal && pHdr && mainData && mHdr && origP && origM;
+    // Invariant I9: offsets above are those of save revision 3.0.x (NHSE
+    // PersonalOffsets30 / MainSaveOffsets30). Other sizes => read-only.
+    const bool editSupported = saveReady && pSz == 0x74A40 && mSz == 0x9B0E90;
+    static char fatalBuf[128];
+    snprintf(fatalBuf, sizeof fatalBuf, "%s", g_status_buf);
+    bool sessionBackupDone = false;
 
-                if (k & HidNpadButton_A) {
-                    char path[96]; snprintf(path, sizeof(path), "sdmc:/switch/acnh_editor/l_%d.dat", g_loadoutSel);
-                    FILE* f = fopen(path, "wb");
-                    if (f) {
-                        size_t wr = fwrite(personal + POCKETS_BASE, 1, 160, f);
-                        fclose(f);
-                        snprintf(g_status_buf, sizeof(g_status_buf), (wr == 160) ? "Saved loadout to SD!" : "Loadout write short!");
-                    } else {
-                        snprintf(g_status_buf, sizeof(g_status_buf), "LO ERR fopen failed!");
-                    }
-                    checkLoadouts();
-                    needDraw = true;
-                }
-                if (k & HidNpadButton_B) {
-                    char path[96]; snprintf(path, sizeof(path), "sdmc:/switch/acnh_editor/l_%d.dat", g_loadoutSel);
-                    FILE* f = fopen(path, "rb");
-                    if (f) {
-                        size_t rd = fread(personal + POCKETS_BASE, 1, 160, f);
-                        fclose(f);
-                        if (rd == 160) {
-                            g_newId = LE16(personal + POCKETS_BASE + (g_slot - 1) * 8);
-                            g_newCount = LE16(personal + POCKETS_BASE + (g_slot - 1) * 8 + 4);
-                            snprintf(g_status_buf, sizeof(g_status_buf), "Loaded loadout! Press A to save to NAND.");
-                            g_screen = 0;
-                        } else {
-                            snprintf(g_status_buf, sizeof(g_status_buf), "Loadout file too small!");
-                        }
-                    } else {
-                        snprintf(g_status_buf, sizeof(g_status_buf), "Loadout file not found!");
-                    }
-                    needDraw = true;
-                }
-            } else if (g_screen == 4) { // NEW: Search Screen Input
-                if (k & HidNpadButton_A) {
-                    if (g_searchQuery.length() > 0 && g_searchSel < (int)g_searchResults.size()) {
-                        g_newId = g_searchResults[g_searchSel].id;
-                        g_newCount = 1;
-                        g_screen = 0;
-                        snprintf(g_status_buf, sizeof(g_status_buf), "Selected: %s", itemName(g_newId));
-                        needDraw = true;
-                    } else {
-                        std::string result = showKeyboard("Search Items (e.g., springy)", g_searchQuery.c_str());
-                        g_searchQuery = result;
-                        
-                        g_searchResults.clear();
-                        std::string lowerQuery = g_searchQuery;
-                        for (char &c : lowerQuery) c = std::tolower((unsigned char)c);
-                        
-                        for (const auto& item : g_allItems) {
-                            std::string lowerName = item.name;
-                            for (char &c : lowerName) c = std::tolower((unsigned char)c);
-                            if (lowerName.find(lowerQuery) != std::string::npos) {
-                                g_searchResults.push_back(item);
-                            }
-                        }
-                        g_searchSel = 0;
-                        needDraw = true;
-                    }
-                }
-                if (k & HidNpadButton_B) {
-                    g_screen = 0;
-                    needDraw = true;
-                }
-                if (k & HidNpadButton_Up) {
-                    if (g_searchSel > 0) g_searchSel--;
-                    needDraw = true;
-                }
-                if (k & HidNpadButton_Down) {
-                    if (g_searchSel < (int)g_searchResults.size() - 1) g_searchSel++;
-                    needDraw = true;
-                }
+    pp::EngineHooks hooks;
+    hooks.pockets = saveReady ? personal + POCKETS_BASE : nullptr;
+    hooks.vals = g_vals;
+    hooks.items = &g_allItems;
+    hooks.favorites = &favorites;
+    hooks.stack = &stackRules;
+    hooks.saveReady = saveReady;
+    hooks.editSupported = editSupported;
+    hooks.fatalError = saveReady ? nullptr : fatalBuf;
+    hooks.loadoutNames = LOADOUT_NAMES;
+    hooks.loadoutCount = LOADOUT_COUNT;
+    hooks.sdDir = sdDir;
+    hooks.version = APP_VERSION_STR;
+
+    // Apply = exactly one doSave() call (invariant I3), preceded by the slot sync (I2).
+    hooks.apply = [&]() -> pp::EngineResult {
+        g_status_buf[0] = '\0';
+        pp::syncSaveSlotVars(personal + POCKETS_BASE, g_slot, g_newId, g_newCount);
+        doSave();
+        return pp::parseSaveStatus(g_status_buf);
+    };
+    hooks.restore = [&]() -> pp::EngineResult {
+        g_status_buf[0] = '\0';
+        doRestore();
+        return pp::parseRestoreStatus(g_status_buf);
+    };
+    hooks.doctor = [&]() -> pp::EngineResult {
+        g_status_buf[0] = '\0';
+        doDoctor();
+        return pp::parseDoctorStatus(g_status_buf);
+    };
+
+    // Read-only validation of a backup pair before any restore (invariant I8):
+    // sizes must match this save, and the 4 EncryptedInt32 checksums must be valid
+    // once a COPY is decrypted. Catches empty / truncated / foreign backups.
+    hooks.checkBackup = [&](bool session) -> pp::BackupCheck {
+        std::string bp = sdDir + (session ? "session_personal.dat" : "backup_personal.dat");
+        std::string bm = sdDir + (session ? "session_main.dat" : "backup_main.dat");
+        long s1 = pp::fileSize(bp.c_str()), s2 = pp::fileSize(bm.c_str());
+        if (s1 < 0 || s2 < 0) return pp::BC_MISSING;
+        if ((size_t)s1 != pSz || (size_t)s2 != mSz) return pp::BC_SIZE;
+        uint8_t* cp = (uint8_t*)malloc(pSz);
+        uint8_t* cm = (uint8_t*)malloc(mSz);
+        pp::BackupCheck res = pp::BC_OK;
+        if (!cp || !cm) res = pp::BC_NOMEM;
+        else {
+            FILE* f1 = fopen(bp.c_str(), "rb"); FILE* f2 = fopen(bm.c_str(), "rb");
+            bool okRead = f1 && f2 && fread(cp, 1, pSz, f1) == pSz && fread(cm, 1, mSz, f2) == mSz;
+            if (f1) fclose(f1);
+            if (f2) fclose(f2);
+            if (!okRead) res = pp::BC_READ;
+            else {
+                CryptACNH(pHdr, cp, pSz); CryptACNH(mHdr, cm, mSz);   // copies only
+                auto fieldOk = [](const uint8_t* b, uint32_t off) { return b[off + 7] == CalcChecksum(LE32(b + off)); };
+                if (!fieldOk(cp, WALLET_OFF) || !fieldOk(cp, BANK_OFF) || !fieldOk(cp, MILES_OFF) || !fieldOk(cm, LOAN_OFF))
+                    res = pp::BC_CORRUPT;
             }
         }
-        svcSleepThread(16000000);
-        if (needDraw) { needDraw = false; buildUI(personal); }
+        if (cp) free(cp);
+        if (cm) free(cm);
+        return res;
+    };
 
-        // EXPANDED PANEL RENDERING
-        SDL_SetRenderDrawColor(g_ren, 0x7A, 0xC1, 0x43, 0xFF); SDL_RenderClear(g_ren);
-        SDL_SetRenderDrawColor(g_ren, 0xF8, 0xF5, 0xEC, 0xFF);
-        
-        // EXPANDED PANEL: 900px wide, 480px tall
-        SDL_Rect panel = { 190, 120, 900, 480 }; SDL_RenderFillRect(g_ren, &panel);
-        
-        SDL_SetRenderDrawColor(g_ren, 0x7A, 0x5C, 0x3E, 0xFF);
-        // EXPANDED BROWN BAR: 900px wide, 80px tall
-        SDL_Rect bar = { 190, 120, 900, 80 }; SDL_RenderFillRect(g_ren, &bar);
-        
-        if (title) { SDL_Rect dst = { 640 - titleW / 2, 120 + (80 - titleH) / 2, titleW, titleH }; SDL_RenderCopy(g_ren, title, nullptr, &dst); }
-        if (icon) { SDL_Rect dst = { 1014, 132, 56, 56 }; SDL_RenderCopy(g_ren, icon, nullptr, &dst); }
-        
-        if (hlOn) { SDL_SetRenderDrawColor(g_ren, 0x6A, 0xA8, 0x4F, 0xFF); SDL_RenderFillRect(g_ren, &hl); }
-        for (auto& u : ui) { SDL_Rect dst = { u.x, u.y, 0, 0 }; SDL_QueryTexture(u.t, nullptr, nullptr, &dst.w, &dst.h); SDL_RenderCopy(g_ren, u.t, nullptr, &dst); }
-        SDL_RenderPresent(g_ren);
+    // Start-of-session backup (SD only): the console state before the first NAND
+    // write of this session. Never overwritten during the session.
+    hooks.writeSessionBackup = [&]() -> bool {
+        if (sessionBackupDone) return true;
+        bool ok = pp::writeFileAll((sdDir + "session_personal.dat").c_str(), origP, pSz) &&
+                  pp::writeFileAll((sdDir + "session_main.dat").c_str(), origM, mSz);
+        sessionBackupDone = ok;
+        return ok;
+    };
+    // SD only: makes the session backup the source of the regular restore block.
+    hooks.sessionToBackup = [&]() -> bool {
+        return pp::copyFile((sdDir + "session_personal.dat").c_str(), (sdDir + "backup_personal.dat").c_str()) &&
+               pp::copyFile((sdDir + "session_main.dat").c_str(), (sdDir + "backup_main.dat").c_str());
+    };
+
+    // Read-only diagnostics for System > Info.
+    hooks.info = [&](pp::InfoData& d) {
+        d.saveSizeOk = editSupported;
+        d.personalSize = (long)pSz; d.mainSize = (long)mSz;
+        d.pRegCount = pRegC; d.mRegCount = mRegC;
+        if (saveReady) {
+            std::vector<pp::RegionRef> r;
+            for (int i = 0; i < pRegC; i++) r.push_back({ pReg[i].off, pReg[i].len });
+            d.pRegOk = pp::regionsHashOk(personal, pSz, r.data(), (int)r.size(), Murmur3Hash);
+            r.clear();
+            for (int i = 0; i < mRegC; i++) r.push_back({ mReg[i].off, mReg[i].len });
+            d.mRegOk = pp::regionsHashOk(mainData, mSz, r.data(), (int)r.size(), Murmur3Hash);
+            bool allZero = true;
+            for (int i = 0; i < 8; i++) {
+                uint32_t off = 0x5B3D50 + (i * 0x74A40);
+                if (off + 4 <= mSz && LE32(mainData + off) != 0) allZero = false;
+            }
+            d.poisonAllZero = allZero;
+        }
+        d.backupPersonal = pp::fileSize((sdDir + "backup_personal.dat").c_str());
+        d.backupMain = pp::fileSize((sdDir + "backup_main.dat").c_str());
+        d.sessionPersonal = pp::fileSize((sdDir + "session_personal.dat").c_str());
+        d.sessionMain = pp::fileSize((sdDir + "session_main.dat").c_str());
+    };
+    hooks.keyboard = [](const char* guide, const char* initial) { return showKeyboard(guide, initial); };
+    hooks.reloadLists = reloadLists;
+
+    ui.start(hooks);
+    while (appletMainLoop()) {
+        padUpdate(&pad);
+        u64 k = padGetButtonsDown(&pad); u64 held = padGetButtons(&pad);
+        if (!ui.frame(k, held)) break;
     }
 
-    for (auto& u : ui) SDL_DestroyTexture(u.t);
-    if (title) SDL_DestroyTexture(title);
-    if (icon) SDL_DestroyTexture(icon);
-    if (fTitle) TTF_CloseFont(fTitle);
-    if (fLine) TTF_CloseFont(fLine);
-    if (fSmall) TTF_CloseFont(fSmall);
+    ui.shutdown();
     TTF_Quit();
     if (personal) free(personal);
     if (pHdr) free(pHdr);
