@@ -10,7 +10,7 @@
 
 ![Power Pockets: pocket and Bells editor for ACNH](banner.png)
 
-**[Download the latest release](../../releases/latest)** · Nintendo Switch with Atmosphère · Animal Crossing: New Horizons 3.0.x
+**[Download a release](../../releases)** · Nintendo Switch with Atmosphère · Animal Crossing: New Horizons 3.0.x
 
 **Fill your pockets fast, and see every change before a single byte is written.**
 
@@ -91,7 +91,7 @@ Do this once, with a save you can afford to lose. It answers two questions nobod
 
 Requirements: a Switch running Atmosphère, and Animal Crossing: New Horizons **3.0.x** (other save versions open read-only).
 
-1. Download `ACNH-Power-Pockets-v1.0.0.zip` from the [latest release](../../releases/latest) and extract it to the root of the SD card. It creates `switch/acnh_power_pockets/`. Builds of every commit are also in the [Actions tab](../../actions) (GitHub login required).
+1. Download `ACNH-Power-Pockets-v1.0.0.zip` from the [Releases page](../../releases) (v1.0.0 is marked pre-release) and extract it to the root of the SD card. It creates `switch/acnh_power_pockets/`. Builds of every commit are also in the [Actions tab](../../actions) (GitHub login required).
 2. Fully close the game: HOME › highlight Animal Crossing › **X** › Close. A suspended game overwrites your edits on its next autosave.
 3. Hold **R** while starting Animal Crossing to open the Homebrew Menu, then launch **ACNH Power Pockets**. Launching from the Album is refused: it doesn't give the app enough access.
 
