@@ -9,17 +9,19 @@
 > - Offline use only. Editing saves can get you into trouble online and may break Nintendo's terms of service. Never trade edited or unreleased items with other players.
 > - Provided **as is, with no warranty of any kind** (MIT license). You alone are responsible for what happens to your save, your console and your accounts. Not affiliated with or endorsed by Nintendo.
 
-**ACNH Power Pockets fills your pockets fast and shows you every change before writing a single byte.** It runs on the Switch itself (homebrew, Atmosphère) and edits the 20 pocket slots, Bells, Nook Miles and the house loan of the primary resident.
+![Power Pockets: pocket and Bells editor for ACNH](banner.png)
 
-It is a fork of [ACNH-Save-Editor](https://github.com/cbreezy210/ACNH-Save-Editor) by cbreezy210: same save engine, new interface built around inventory work. See [Where it comes from](#where-it-comes-from).
+**Fill your pockets fast, and see every change before a single byte is written.**
 
-![Pockets panel after filling 10 slots](docs/screenshots/pockets.png)
+ACNH Power Pockets is a homebrew app for the Nintendo Switch (Atmosphère). It edits the 20 pocket slots, Bells, Nook Miles and the house loan of the primary resident, directly on the console.
 
----
+It is a fork of [ACNH-Save-Editor](https://github.com/cbreezy210/ACNH-Save-Editor) by cbreezy210. The save engine is the upstream one, unchanged. The interface is new, built around inventory work. See [Where it comes from](#where-it-comes-from).
+
+![The Pockets panel: three slots just filled with Nook Miles Tickets, shown in amber until applied](docs/screenshots/pockets.png)
 
 ## Contents
 
-- [What you get](#what-you-get)
+- [A quick tour](#a-quick-tour)
 - [First-use test](#first-use-test)
 - [Install](#install)
 - [Using it](#using-it)
@@ -32,28 +34,52 @@ It is a fork of [ACNH-Save-Editor](https://github.com/cbreezy210/ACNH-Save-Edito
 - [Contributing](#contributing)
 - [License and credits](#license-and-credits)
 
-## What you get
+## A quick tour
 
-- **Ten slots in ten presses.** Pick an item once (favorite, search, or an item already in your pockets). Each press of **Y** drops it in the next empty slot.
-- **Nothing is written until you say so.** Every edit stays in memory. The **Review** screen lists each change as *before » after*. **Apply** writes everything in one go, **Discard** throws it all away.
-- **Your items are never overwritten by accident.** Placing only targets empty slots. Replacing an item takes an explicit *Clear slot* first.
-- **Favorites you manage yourself.** Star or unstar any item from the app. Your list lives in `user_favorites.txt` on the SD card and is shown first, above the 22 built-in favorites.
-- **A picture for every item.** 98 small original pictures, one per kind of item (tools, fruit, flowers, furniture, clothes…), tinted with the item's color when its name says it. Items the rules don't know show a "?". Purely cosmetic and optional: you can edit the rules in `item_glyphs.txt`.
-- **Honest quantities.** Tools and other items that never stack carry a `1/slot` badge. The app doesn't ask for a quantity it can't deliver. You can extend the list in `nonstackable.txt`.
-- **Dangerous actions are hard to trigger.** Restoring a backup and the Save Doctor write to the console immediately. They live in the System panel, in red, need **A** held for 1.5 seconds, and are blocked while you have unapplied changes.
+Six panels, switched with **L** and **R**. **A** opens a menu of actions for whatever is selected. **Y** does the most common one directly.
+
+### Ten slots in ten presses
+
+Pick an item once, from your favorites, the catalog, or your own pockets. Each press of **Y** drops it in the next empty slot. Occupied slots are never overwritten: replacing an item takes an explicit *Clear slot* first.
 
 | | |
 |---|---|
-| ![Action menu](docs/screenshots/slot-menu.png) | ![Review screen](docs/screenshots/review.png) |
-| ![Catalog search](docs/screenshots/catalog.png) | ![Hold-to-confirm dialog](docs/screenshots/danger-dialog.png) |
-| ![Favorites in two groups](docs/screenshots/favorites.png) | ![System panel](docs/screenshots/system.png) |
+| ![Favorites panel with the YOURS and BUILT-IN groups](docs/screenshots/favorites.png) | ![Action menu of a pocket slot](docs/screenshots/slot-menu.png) |
+| **Favorites.** Yours first, then the 22 built-in ones. Add or remove them from the app; they are saved on the SD card. | **One menu per slot.** Fill empty slots, change a quantity, pick the item up, favorite it, revert it, clear it. |
+
+### A picture and a color for every item
+
+98 small original pictures, one per kind of item, tinted with the item's color when its name gives one. Items that never stack (tools, wands, saplings…) carry a `1/slot` badge and are never given a quantity they can't hold.
+
+| | |
+|---|---|
+| ![Catalog search results for sneakers, each in its own color](docs/screenshots/catalog.png) | ![Loadouts panel with a preview of the saved pockets](docs/screenshots/loadouts.png) |
+| **Catalog.** Search about 11,000 named items by name or by hex ID. | **Loadouts.** Five pocket setups saved on the SD card, with a preview. |
+
+### Nothing is written until you apply
+
+Every edit stays in memory and is marked in amber. **+** opens the Review: each change as *before » after*. **Apply** writes them all in one go, **Discard** drops them, and quitting asks first.
+
+| | |
+|---|---|
+| ![Bells and Miles panel with the number editor open](docs/screenshots/bells-miles.png) | ![Review screen listing pocket and money changes](docs/screenshots/review.png) |
+| **Bells & Miles.** Wallet, Bank, Nook Miles and House loan, by steps or typed in. | **Review.** The only way to the save goes through this screen. |
+
+### Dangerous actions are hard to trigger
+
+Restoring a backup and the Save Doctor write to the console right away. They live in the System panel, in red. They need **A** held for 1.5 seconds and are blocked while you have unapplied changes. The shoulder triggers do nothing.
+
+| | |
+|---|---|
+| ![System panel with the direct-write actions and the Info pane](docs/screenshots/system.png) | ![Hold-to-confirm dialog before restoring a backup](docs/screenshots/danger-dialog.png) |
+| **System.** Backups, repair, and read-only diagnostics of the save. | **Hold to confirm.** Releasing early cancels. |
 
 ## First-use test
 
 Do this once, with a save you can afford to lose. It answers two questions nobody has checked yet on this version: does the game accept a save written by this tool, and how does the game count stacks?
 
 1. Back up the save with JKSV or Checkpoint and copy the backup to a computer.
-2. Launch Power Pockets. Put **Nook Miles Ticket** in an **empty** slot with quantity **9** (*Favorites* › *Take with quantity…* › 9, then **Y** in *Pockets*). Press **+**, then **Apply**.
+2. Launch Power Pockets. Put **Nook Miles Ticket** in an **empty** slot with quantity **9** (*Favorites* › *Take with quantity…* › 9, then **Y** in *Pockets*). Press **+**, then **Apply**. Change nothing else, and leave the loan alone (see [Known limitations](#known-limitations)).
 3. Start the game:
    - **The save doesn't load, or the game offers to restore it:** stop. Restore your JKSV/Checkpoint backup and [open an issue](../../issues) with your game version.
    - **You get 10 tickets:** the game stores "quantity − 1". Displayed quantities are off by one until `kCountZeroBased` is set to `true` in `source/pp_model.h`. Please report it.
@@ -64,11 +90,23 @@ Do this once, with a save you can afford to lose. It answers two questions nobod
 
 Requirements: a Switch running Atmosphère, and Animal Crossing: New Horizons **3.0.x** (other save versions open read-only).
 
-1. Copy the `switch/acnh_editor/` folder to the root of the SD card. It contains `acnh_editor.nro`, `font.ttf`, `items.txt`, `icon.png`, `ui_icons.png`, `item_glyphs.png`, `item_glyphs.txt` and `nonstackable.txt`. Builds come from the [Actions tab](../../actions) (artifact `acnh-power-pockets`) until releases are published.
+1. Get the `switch/acnh_editor/` folder from the [Actions tab](../../actions) (latest green run, artifact `acnh-power-pockets`; a GitHub login is required) and copy it to the root of the SD card. Releases will follow once the app has been validated on a console.
 2. Fully close the game: HOME › highlight Animal Crossing › **X** › Close. A suspended game overwrites your edits on its next autosave.
 3. Hold **R** while starting Animal Crossing to open the Homebrew Menu, then launch **ACNH Power Pockets**. Launching from the Album is refused: it doesn't give the app enough access.
 
-The folder name is `acnh_editor`, the same as upstream ACNH-Save-Editor. Power Pockets replaces it and reuses its backups, loadouts and settings. Don't run both apps side by side.
+The folder should contain:
+
+| File | Needed? |
+|---|---|
+| `acnh_editor.nro`, `font.ttf` | Required |
+| `items.txt` | Strongly recommended: item names, favorites and the `1/slot` protection depend on it |
+| `icon.png`, `ui_icons.png`, `item_glyphs.png`, `item_glyphs.txt`, `nonstackable.txt` | Optional: icons, item pictures, extra `1/slot` rules |
+
+### Already using ACNH-Save-Editor?
+
+Power Pockets uses the same file name and folder as upstream (`switch/acnh_editor/acnh_editor.nro`), so copying it **replaces** the upstream app. That is intended. A `.nro` has no application ID, so nothing can clash on the console itself, and a forwarder that points to that file simply opens Power Pockets.
+
+Your upstream backups, loadouts and settings stay in the folder and keep working. Keeping both apps under different file names is possible but not recommended: they would share the same backup files, and upstream writes to the save on a single press.
 
 ## Using it
 
@@ -89,11 +127,11 @@ The folder name is `acnh_editor`, the same as upstream ACNH-Save-Editor. Power P
 
 | Panel | For |
 |---|---|
-| **Pockets** | The 20 slots. **Y** places the item in hand in the next empty slot (or picks up the item under the cursor when your hand is empty). Menu: *Fill empty slots*, *Take in hand*, *Quantity…*, *Held quantity…*, *Enter item ID (hex)…*, *Add/Remove favorite*, *Revert to original*, *Clear slot*. |
-| **Favorites** | Two groups, each A to Z: **YOURS** (added by you), then **BUILT-IN**. **Y** takes one and jumps back to Pockets. A built-in favorite can be hidden, and comes back with *Restore default favorites*. |
-| **Catalog** | Search all ~15,000 items by name or 4-digit hex ID. |
-| **Bells & Miles** | Wallet, Bank, Nook Miles, House loan. Step with the D-pad (±1,000 / ±100,000, ×10 after holding 2 s) or type a value. |
-| **Loadouts** | Five saved pocket setups on the SD card. Loading one counts as a pending change. |
+| **Pockets** | The 20 slots. **Y** places the item in hand in the next empty slot, or picks up the item under the cursor when your hand is empty. Menu: *Fill empty slots*, *Take in hand*, *Quantity…*, *Held quantity…*, *Enter item ID (hex)…*, *Add/Remove favorite*, *Revert to original*, *Clear slot*. |
+| **Favorites** | Two groups, each A to Z: **YOURS**, then **BUILT-IN**. **Y** takes one and jumps back to Pockets. A built-in favorite can be hidden, and comes back with *Restore default favorites*. |
+| **Catalog** | Search by name or 4-digit hex ID. ★ marks your favorites. |
+| **Bells & Miles** | Wallet, Bank, Nook Miles, House loan. Step with the D-pad (±1,000 / ±100,000, ×10 after holding 2 s) or type a value. A warning shows above the game's wallet limit (99,999). |
+| **Loadouts** | Five saved pocket setups. Loading one is a pending change like any other. |
 | **System** | Restore backups, Save Doctor, reload your lists, diagnostics, quit. |
 
 ### Recipes
@@ -111,7 +149,9 @@ The folder name is `acnh_editor`, the same as upstream ACNH-Save-Editor. Power P
 2. Hands your changes to the unchanged upstream engine. The engine first writes `backup_*.dat` (the state before this Apply), then writes and commits the save.
 3. Reloads the "original" state only if every step succeeded. If anything fails, your changes stay pending and the app says what happened.
 
-**Before any restore**, the backup is checked on a decrypted copy: sizes and value checksums must match, and it may only differ from the current save where this app writes (pockets, the four values, eight repair fields). Otherwise the restore is refused. A backup that is incomplete, damaged, or older than the game's last save is never offered. The backups hold `personal.dat` and `main.dat` only, without the key files: they can't be restored with another tool, and they stop being usable as soon as the game saves again.
+**Before any restore**, the backup is checked on a decrypted copy: sizes and value checksums must match, and it may only differ from the current save where this app writes (pockets, the four values, eight repair fields). Otherwise the restore is refused. A backup that is incomplete, damaged, or older than the game's last save is never offered.
+
+**The app's backups are not full backups.** They hold `personal.dat` and `main.dat` only, without the key files. They can't be restored with another tool, and they stop being usable as soon as the game saves again.
 
 **What this does *not* protect you from:** a game version with a different save layout (the app goes read-only when file sizes are unexpected, but that check is not exhaustive), the integrity hashes noted below, power loss at the wrong moment, or SD card failure. That is why the JKSV/Checkpoint backup at the top of this page matters.
 
@@ -119,10 +159,10 @@ The folder name is `acnh_editor`, the same as upstream ACNH-Save-Editor. Power P
 
 - **Integrity hashes are not recomputed.** The save is split into regions protected by Murmur3 hashes. The engine finds them but doesn't update them after an edit. This is inherited from upstream and deliberately left alone (this fork doesn't touch the engine). System › Info shows how many hashes match.
 - **Quantity convention unconfirmed:** see the [first-use test](#first-use-test).
-- **Slow start after an edit.** Until the game has saved again, the inherited engine rescans the edited files at launch. The "Reading the save…" screen can stay up for tens of seconds after a pocket edit, and for several minutes after a loan edit. It is not frozen: wait.
+- **Slow start after an edit.** Until the game has saved again, the inherited engine rescans the edited files at launch. The "Reading the save…" screen can stay up for tens of seconds after a pocket edit, and for several minutes after a loan edit (estimates, not measured on a console). It is not frozen: wait.
 - **Only the primary resident** (`Villager0`) and **only the 20 pocket slots** (not the bag expansion).
 - **Save versions 3.0.x only**; anything else is read-only.
-- Item names are English, from `items.txt`.
+- Item names are English, from `items.txt`. About 6 % of the named items have no picture rule yet and show a "?".
 
 ## Files on the SD card
 
@@ -132,7 +172,7 @@ All in `sdmc:/switch/acnh_editor/`.
 |---|---|---|
 | `user_favorites.txt` | the app | Your favorites. Plain text, safe to edit. `.bak` keeps your previous version. |
 | `nonstackable.txt` | you | Extra `1/slot` rules (optional) |
-| `item_glyphs.png`, `item_glyphs.txt` | you (install) | Item pictures and the rules that pick one for each item (optional: without them the app shows names only) |
+| `item_glyphs.png`, `item_glyphs.txt` | you (install) | Item pictures, and the rules that pick a picture and a color for each item |
 | `backup_personal.dat`, `backup_main.dat` | the app | Save as it was before the last Apply |
 | `session_personal.dat`, `session_main.dat` | the app | Pre-edit backup: save as the game last wrote it, before this app's first write |
 | `session_mark.txt` | the app | Tells the app whether the pre-edit backup still matches the console (don't edit) |
@@ -143,7 +183,7 @@ All in `sdmc:/switch/acnh_editor/`.
 `user_favorites.txt` format:
 ```text
 +16DB Nook Miles Ticket     a favorite you added (the hex ID counts, the name is a reminder)
--0A4E gold roses            a built-in favorite you removed
+-0A4E gold roses            a built-in favorite you hid
 ```
 
 `nonstackable.txt` format (rules apply top to bottom):
@@ -155,18 +195,21 @@ golden axe     exact item name, case-insensitive
 ```
 Tools (axes, nets, fishing rods, shovels, watering cans, slingshots, ladder, vaulting pole) are always `1/slot`. The shipped file adds wands, saplings and sprouts.
 
+`item_glyphs.txt` documents its own format at the top of the file. The pictures are cosmetic: a mistake in that file can't affect the save.
+
 ## Troubleshooting
 
 | Symptom | Fix |
 |---|---|
 | "The save can't be opened" | The game is still running or suspended. Close it fully (HOME › X › Close), then relaunch through the game holding **R**. |
-| Red "missing file" text at launch | `font.ttf` isn't in `sdmc:/switch/acnh_editor/`. |
+| Red "missing file" or "unreadable file" text at launch | `font.ttf` is missing from `sdmc:/switch/acnh_editor/`, or its copy is damaged. |
 | Names show as `ID 16DB` | `items.txt` is missing. Editing still works, but favorites become read-only and the `1/slot` protection is off: put the file back before placing items. |
+| No pictures next to the items | `item_glyphs.png` or `item_glyphs.txt` is missing. System › Info says "no pictures". |
 | Stuck on "Reading the save…" | Not frozen. After an edit, and until the game has saved again, the launch scan is slow (minutes after a loan edit). |
 | "This backup doesn't belong to the current save" | The game has saved since the backup was made, or the file is damaged. It can't be restored; use your JKSV/Checkpoint backup. |
 | "Read-only: unsupported save version" | Your save isn't the 3.0.x layout this engine knows. Nothing will be written. |
 | Changes vanished in the game | The game was suspended while you edited, or you quit without **Apply**. |
-| Restore is greyed out | Apply or discard your pending changes first, or the last backup wasn't written completely (System › Info). |
+| Restore is blocked | Apply or discard your pending changes first, or the last backup wasn't written completely (System › Info). |
 
 ## Building and testing
 
@@ -180,20 +223,23 @@ You can check the project without a Switch:
 ```sh
 git remote add upstream https://github.com/cbreezy210/ACNH-Save-Editor.git && git fetch upstream
 python3 tools/check_engine_untouched.py upstream/main   # proves the save engine is byte-identical to upstream
-sh tests/host/run.sh                                     # unit tests (incl. parser fuzzing) + compile check against libnx/SDL2 stubs
-sh tests/host/engine_bench.sh                            # runs the real main.cpp on a fake console: byte-exact checks of Apply / restore / Doctor, with injected failures
-sh tests/host/ui_shots.sh                                # renders the real UI with a fake engine, checks flows and failures, saves screenshots
+sh tests/host/run.sh            # unit tests, parser fuzzing, item-picture rules vs the design tool, compile check
+sh tests/host/engine_bench.sh   # the real main.cpp on a fake console: byte-exact Apply / restore / Doctor, injected failures
+sh tests/host/ui_shots.sh       # the real UI with a fake engine: flows and failure dialogs, with screenshots
+sh tests/host/ui_gallery.sh     # regenerates the screenshots of this README
 ```
-`ui_shots.sh` needs SDL2, SDL2_ttf (`brew install sdl2 sdl2_ttf`) and Python Pillow. With Pillow installed, `run.sh` also checks that the app picks the same picture and color as `tools/make_item_glyphs.py` for every item.
+The two `ui_*` scripts need SDL2 and SDL2_ttf (`brew install sdl2 sdl2_ttf`) and Python Pillow. Pillow also enables the item-picture check in `run.sh`.
 
 | Path | Contents |
 |---|---|
 | `source/main.cpp` | Upstream save engine (unchanged) and the wiring to the UI |
-| `source/pp_model.*` | Testable logic: slots, pending changes, favorites, 1/slot rules |
+| `source/pp_model.*` | Testable logic: slots, pending changes, favorites, `1/slot` and picture rules, backup checks |
 | `source/pp_ui.*`, `source/pp_strings.h` | Panels, dialogs, every on-screen string |
-| `docs/design/` | Visual design system and HTML mockups |
+| `tools/` | Engine check, and the scripts that draw the logo, icons and item pictures |
+| `docs/design/` | Visual design system, item pictures, HTML mockups |
 | `docs/ux/UX_SPEC.md` | Interaction spec |
 | `docs/engine/AUDIT_ECRITURE.md` | Read-only audit of the save-writing code |
+| `docs/review/BUG_HUNT.md` | Pre-console bug hunt: findings, fixes, remaining risks |
 
 The documents in `docs/` are written in French.
 
@@ -208,9 +254,12 @@ What changed is everything you see and touch:
 | **A** saves to the console immediately | Changes are prepared, reviewed, then applied together |
 | One slot per save | Any number of slots per Apply, **Y** fills the next empty slot |
 | Favorites compiled into the app | Favorites editable in the app, stored on the SD card |
+| Item names only | A picture and a color for each item |
 | Quantity asked for every item | `1/slot` items flagged, no quantity asked |
 | **ZL** restores in one press, **ZR ZR** runs the Doctor | Both in the System panel, hold-to-confirm, blocked with pending changes |
 | One rolling backup | Rolling backup plus a pre-edit backup kept until the game saves, both validated before restoring |
+
+The logo, icons and item pictures are original drawings made for this project. They are not taken from the game.
 
 Upstream's own history and plans: [ROADMAP.md](ROADMAP.md) (kept unchanged).
 
