@@ -81,7 +81,7 @@ DEPENDS := $(OFILES:.o=.d)
 
 all: $(OUTPUT).nro
 
-# FIXED: Added --icon=$(APP_ICON) to embed the leaf logo into the Homebrew Menu!
+# FIXED: Added --icon=$(APP_ICON) to embed the app icon into the Homebrew Menu
 $(OUTPUT).nro: $(OUTPUT).elf $(OUTPUT).nacp
 	@echo creating ... $(notdir $@)
 	@elf2nro $(OUTPUT).elf $@ --nacp=$(OUTPUT).nacp --icon=$(APP_ICON)
