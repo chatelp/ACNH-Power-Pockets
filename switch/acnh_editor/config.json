@@ -4,7 +4,7 @@
   "version": "1.0.0",
   "category": "tool",
   "description": "Inventory-focused fork of ACNH Save Editor: panels, prepare-then-apply edits, fast slot filling, favorites managed in the app, 1/slot items flagged. Same untouched save engine, SD backups and Save Doctor.",
-  "url": "REPLACE_WITH_FORK_URL",
+  "url": "https://github.com/chatelp/ACNH-Power-Pockets",
   "license": "MIT",
-  "license_url": "REPLACE_WITH_FORK_URL/blob/main/LICENSE"
+  "license_url": "https://github.com/chatelp/ACNH-Power-Pockets/blob/main/LICENSE"
 }
