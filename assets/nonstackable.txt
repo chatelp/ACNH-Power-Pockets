@@ -1,5 +1,5 @@
 # ACNH Power Pockets - items that never stack in the game ("1/slot").
-# Copy this file to sdmc:/switch/acnh_editor/nonstackable.txt and edit it freely:
+# Copy this file to sdmc:/switch/acnh_power_pockets/nonstackable.txt and edit it freely:
 # the app re-reads it at launch, or from System > Reload favorites and 1/slot rules.
 #
 # One rule per line:

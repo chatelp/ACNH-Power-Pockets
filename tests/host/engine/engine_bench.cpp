@@ -165,7 +165,7 @@ static size_t firstDiff(const Bytes& a, const Bytes& b) {
 // Paths are relative: each app run happens in a forked child that chdir()s into the world.
 static const char* NAND_P = "nand/Villager0/personal.dat";
 static const char* NAND_M = "nand/main.dat";
-static std::string sd(const char* name) { return std::string("sdmc:/switch/acnh_editor/") + name; }
+static std::string sd(const char* name) { return std::string("sdmc:/switch/acnh_power_pockets/") + name; }
 
 struct World { std::string root; };
 static void putSave(const World& w, const Save& s) {
@@ -176,10 +176,10 @@ static void putSave(const World& w, const Save& s) {
 }
 static World makeWorld(const char* name, const Save& s, bool withItems = true, bool withFont = true) {
     World w; w.root = g_tmp + "/" + name;
-    std::string cmd = "rm -rf '" + w.root + "' && mkdir -p '" + w.root + "/nand/Villager0' '" + w.root + "/sdmc:/switch/acnh_editor'";
+    std::string cmd = "rm -rf '" + w.root + "' && mkdir -p '" + w.root + "/nand/Villager0' '" + w.root + "/sdmc:/switch/acnh_power_pockets'";
     if (system(cmd.c_str()) != 0) { printf("cannot create %s\n", w.root.c_str()); exit(2); }
     putSave(w, s);
-    std::string dst = w.root + "/sdmc:/switch/acnh_editor/";
+    std::string dst = w.root + "/sdmc:/switch/acnh_power_pockets/";
     if (withFont) writeFile(dst + "font.ttf", slurp(g_repo + "/assets/font.ttf"));
     if (withItems) writeFile(dst + "items.txt", slurp(g_repo + "/assets/items.txt"));
     writeFile(dst + "nonstackable.txt", slurp(g_repo + "/assets/nonstackable.txt"));
@@ -564,8 +564,8 @@ static void scnRestoreWhenSdFull(const Save& s0) {
         static Model m; m = s0.model;
         placeTicket(m, 5); applyFromPanel(); SEE("Changes applied"); quitFromPanel();
     });
-    remove((w.root + "/sdmc:/switch/acnh_editor/session_main.dat").c_str());       // no pre-edit pair for this state
-    remove((w.root + "/sdmc:/switch/acnh_editor/session_personal.dat").c_str());
+    remove((w.root + "/sdmc:/switch/acnh_power_pockets/session_main.dat").c_str());       // no pre-edit pair for this state
+    remove((w.root + "/sdmc:/switch/acnh_power_pockets/session_personal.dat").c_str());
     launch(w, "launch 2: card full, restore", [&]() {
         probe([]() { setFileSizeLimit(4 * 1024 * 1024); });
         panel(P_POCKETS, P_SYSTEM);

@@ -51,7 +51,7 @@ struct EngineHooks {
     const char* fatalError = nullptr;     // shown instead of the panels when !saveReady
     const char* const* loadoutNames = nullptr;
     int loadoutCount = 0;
-    std::string sdDir;                    // "sdmc:/switch/acnh_editor/"
+    std::string sdDir;                    // "sdmc:/switch/acnh_power_pockets/"
     std::string version;
 
     // ---- Engine wrappers (defined in main.cpp, engine code untouched) ----

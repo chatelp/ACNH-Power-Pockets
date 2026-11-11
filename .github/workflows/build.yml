@@ -29,10 +29,8 @@ jobs:
         timeout-minutes: 3
       - name: Host tests
         run: CXX=clang++ sh tests/host/run.sh
-      # Real main.cpp on a fake console (synthetic save, injected failures). Written and
-      # run on macOS only so far: not blocking until it has been seen green on Linux.
+      # Real main.cpp on a fake console (synthetic save, injected failures).
       - name: Engine bench
-        continue-on-error: true
         run: CXX=clang++ sh tests/host/engine_bench.sh
 
   switch-nro:
@@ -51,10 +49,10 @@ jobs:
         run: make -j"$(nproc)"
       - name: Package (SD card layout)
         run: |
-          mkdir -p dist/switch/acnh_editor
-          cp acnh_editor.nro icon.png dist/switch/acnh_editor/
-          cp assets/font.ttf assets/items.txt assets/ui_icons.png assets/nonstackable.txt dist/switch/acnh_editor/
-          cp assets/item_glyphs.png assets/item_glyphs.txt dist/switch/acnh_editor/
+          mkdir -p dist/switch/acnh_power_pockets
+          cp acnh_power_pockets.nro icon.png dist/switch/acnh_power_pockets/
+          cp assets/font.ttf assets/items.txt assets/ui_icons.png assets/nonstackable.txt dist/switch/acnh_power_pockets/
+          cp assets/item_glyphs.png assets/item_glyphs.txt dist/switch/acnh_power_pockets/
       - uses: actions/upload-artifact@v4
         with:
           name: acnh-power-pockets

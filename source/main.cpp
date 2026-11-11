@@ -13,8 +13,9 @@
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
 
-// ACNH Power Pockets: UI model + panel UI. The save engine below is unchanged
-// from upstream ACNH-Save-Editor; see docs/engine/AUDIT_ECRITURE.md.
+// ACNH Power Pockets: UI model + panel UI. The save engine below is the one of upstream
+// ACNH-Save-Editor, unchanged apart from the SD folder name in its path strings
+// (checked by tools/check_engine_untouched.py); see docs/engine/AUDIT_ECRITURE.md.
 #include "pp_model.h"
 #include "pp_ui.h"
 
@@ -202,8 +203,8 @@ static bool backupToSd(const uint8_t* pers, size_t pSz, const uint8_t* main, siz
         Result wr = fsFileWrite(&f, 0, d, s, FsWriteOption_Flush);
         fsFileClose(&f); return R_SUCCEEDED(wr);
     };
-    bool ok = writeOne("/switch/acnh_editor/backup_personal.dat", pers, pSz) &&
-              writeOne("/switch/acnh_editor/backup_main.dat", main, mSz);
+    bool ok = writeOne("/switch/acnh_power_pockets/backup_personal.dat", pers, pSz) &&
+              writeOne("/switch/acnh_power_pockets/backup_main.dat", main, mSz);
     fsFsClose(&sd);
     if (!ok) snprintf(bakMsg, sizeof(bakMsg), "BAK write failed!");
     return ok;
@@ -275,10 +276,10 @@ int main(int argc, char** argv) {
     }
 
     // --- Power Pockets: missing font guard (upstream showed a blank green screen) ---
-    if (!pp::fileExists("sdmc:/switch/acnh_editor/font.ttf")) {
+    if (!pp::fileExists("sdmc:/switch/acnh_power_pockets/font.ttf")) {
         consoleClear();
         printf("\x1b[31m\n\n  !! ACNH POWER POCKETS - MISSING FILE !!\x1b[0m\n\n");
-        printf("  font.ttf was not found in sdmc:/switch/acnh_editor/\n");
+        printf("  font.ttf was not found in sdmc:/switch/acnh_power_pockets/\n");
         printf("  Copy font.ttf (and items.txt) from the release zip into that folder.\n\n");
         printf("  Nothing was read or written. Press [A] to exit.\n");
         consoleUpdate(NULL);
@@ -298,7 +299,7 @@ int main(int argc, char** argv) {
     SDL_Window* win = SDL_CreateWindow("ACNH Power Pockets", 0, 0, 1280, 720, SDL_WINDOW_FULLSCREEN);
     g_ren = SDL_CreateRenderer(win, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
     TTF_Init();
-    const std::string sdDir = "sdmc:/switch/acnh_editor/";
+    const std::string sdDir = "sdmc:/switch/acnh_power_pockets/";
     pp::Ui ui;
     if (!ui.init(g_ren, sdDir)) {
         // font.ttf is there but can't be loaded: every screen would be blank while the
@@ -308,7 +309,7 @@ int main(int argc, char** argv) {
         SDL_DestroyRenderer(g_ren); SDL_DestroyWindow(win); SDL_Quit();
         consoleInit(NULL);
         printf("\x1b[31m\n\n  !! ACNH POWER POCKETS - UNREADABLE FILE !!\x1b[0m\n\n");
-        printf("  font.ttf in sdmc:/switch/acnh_editor/ can't be loaded (damaged copy?).\n");
+        printf("  font.ttf in sdmc:/switch/acnh_power_pockets/ can't be loaded (damaged copy?).\n");
         printf("  Copy font.ttf again from the release zip.\n\n");
         printf("  Nothing was read or written. Press [A] to exit.\n");
         consoleUpdate(NULL);
@@ -329,7 +330,7 @@ int main(int argc, char** argv) {
     ui.splash();
 
     // items.txt: one name per line, the item ID is the line index (unchanged format).
-    FILE* it = fopen("sdmc:/switch/acnh_editor/items.txt", "rb");
+    FILE* it = fopen("sdmc:/switch/acnh_power_pockets/items.txt", "rb");
     if (it) {
         char line[256];
         uint16_t id = 0;
@@ -412,16 +413,16 @@ int main(int argc, char** argv) {
         { // ---- v1.4.3: pick the BEST layout, never pollute the cache ----
             static Region cacheP[16]; static Region cacheM[32];
             int cachePC = 0, cacheMC = 0;
-            loadLayout("sdmc:/switch/acnh_editor/layout_personal.dat", cacheP, cachePC, 16, pSz);
-            loadLayout("sdmc:/switch/acnh_editor/layout_main.dat", cacheM, cacheMC, 32, mSz);
+            loadLayout("sdmc:/switch/acnh_power_pockets/layout_personal.dat", cacheP, cachePC, 16, pSz);
+            loadLayout("sdmc:/switch/acnh_power_pockets/layout_main.dat", cacheM, cacheMC, 32, mSz);
             if (pRegC > 0 && pRegC >= cachePC) {
-                saveLayout("sdmc:/switch/acnh_editor/layout_personal.dat", pReg, pRegC);
+                saveLayout("sdmc:/switch/acnh_power_pockets/layout_personal.dat", pReg, pRegC);
             } else if (cachePC > 0) {
                 for (int i = 0; i < cachePC; i++) pReg[i] = cacheP[i];
                 pRegC = cachePC;
             }
             if (mRegC > 0 && mRegC >= cacheMC) {
-                saveLayout("sdmc:/switch/acnh_editor/layout_main.dat", mReg, mRegC);
+                saveLayout("sdmc:/switch/acnh_power_pockets/layout_main.dat", mReg, mRegC);
             } else if (cacheMC > 0) {
                 for (int i = 0; i < cacheMC; i++) mReg[i] = cacheM[i];
                 mRegC = cacheMC;
@@ -494,8 +495,8 @@ int main(int argc, char** argv) {
     // changed: System panel + danger dialog instead of a raw trigger press.
     // ======================================================================
     auto doRestore = [&]() {
-                    FILE* fp = fopen("sdmc:/switch/acnh_editor/backup_personal.dat", "rb");
-                    FILE* fm = fopen("sdmc:/switch/acnh_editor/backup_main.dat", "rb");
+                    FILE* fp = fopen("sdmc:/switch/acnh_power_pockets/backup_personal.dat", "rb");
+                    FILE* fm = fopen("sdmc:/switch/acnh_power_pockets/backup_main.dat", "rb");
                     if (!fp || !fm) {
                         snprintf(g_status_buf, sizeof(g_status_buf), "Restore failed: backup files missing!");
                     } else {
@@ -555,8 +556,8 @@ int main(int argc, char** argv) {
                                 Result w = fsFileWrite(&f, 0, d, s, FsWriteOption_Flush);
                                 fsFileClose(&f); return R_SUCCEEDED(w);
                             };
-                            forensics = wrFile("/switch/acnh_editor/damaged_personal.dat", origP, pSz) &&
-                                        wrFile("/switch/acnh_editor/damaged_main.dat", origM, mSz);
+                            forensics = wrFile("/switch/acnh_power_pockets/damaged_personal.dat", origP, pSz) &&
+                                        wrFile("/switch/acnh_power_pockets/damaged_main.dat", origM, mSz);
                             fsFsClose(&sd2);
                         }
                         // 2) Re-heal all detected regions

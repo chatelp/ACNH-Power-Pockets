@@ -233,7 +233,7 @@ void drawGlyph(SDL_Renderer* ren, SDL_Texture* sheet, int glyph, bool tint, uint
 
 ## 7. Règles de correspondance item → glyphe
 
-Fichier `assets/item_glyphs.txt` (825 règles), à copier dans `sdmc:/switch/acnh_editor/`.
+Fichier `assets/item_glyphs.txt` (825 règles), à copier dans `sdmc:/switch/acnh_power_pockets/`.
 
 ```
 glyph 71 shirt tint      # table : index, nom, teintable

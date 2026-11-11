@@ -1,5 +1,5 @@
 # ACNH Power Pockets - item glyphs: which small picture goes with each item.
-# Pictures live in item_glyphs.png. Copy both files to sdmc:/switch/acnh_editor/
+# Pictures live in item_glyphs.png. Copy both files to sdmc:/switch/acnh_power_pockets/
 # next to items.txt. Edit freely; the app reads them at launch.
 #
 # item_glyphs.png has one 24x24 cell per glyph (x = index * 24) on 3 rows:

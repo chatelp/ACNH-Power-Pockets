@@ -26,7 +26,7 @@ LIBS		:= -lSDL2 -lSDL2_ttf -Wl,--start-group -lfreetype -lharfbuzz -lpng16 -lbz2
 LIBDIRS		:=	$(DEVKITPRO)/libnx $(DEVKITPRO)/portlibs/switch
 
 #---------------------------------------------------------------------------------
-TARGET      := acnh_editor
+TARGET      := acnh_power_pockets
 BUILD       := build
 SOURCES     := source
 INCLUDES    := include
@@ -34,8 +34,8 @@ INCLUDES    := include
 APP_TITLE	:=	ACNH Power Pockets
 APP_AUTHOR	:=	Power Pockets fork of cbreezy210
 APP_VERSION	:=	1.0.0
-# Fork of ACNH-Save-Editor 1.4.1 (upstream commit 731c228). TARGET and the SD folder
-# stay "acnh_editor" on purpose: same backups, loadouts and layout cache as upstream.
+# Fork of ACNH-Save-Editor 1.4.1 (upstream commit 731c228). The .nro and its SD folder
+# (sdmc:/switch/acnh_power_pockets/) have their own names: nothing is shared with upstream.
 #---------------------------------------------------------------------------------
 
 CFLAGS += -I$(DEVKITPRO)/portlibs/switch/include -DAPP_VERSION_STR=\"$(APP_VERSION)\"

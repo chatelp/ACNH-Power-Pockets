@@ -15,7 +15,7 @@
 
 ACNH Power Pockets is a homebrew app for the Nintendo Switch (Atmosphère). It edits the 20 pocket slots, Bells, Nook Miles and the house loan of the primary resident, directly on the console.
 
-It is a fork of [ACNH-Save-Editor](https://github.com/cbreezy210/ACNH-Save-Editor) by cbreezy210. The save engine is the upstream one, unchanged. The interface is new, built around inventory work. See [Where it comes from](#where-it-comes-from).
+It is a fork of [ACNH-Save-Editor](https://github.com/cbreezy210/ACNH-Save-Editor) by cbreezy210. The save engine is the upstream one: the only thing changed in it is the name of the SD folder where it keeps its backups. The interface is new, built around inventory work. See [Where it comes from](#where-it-comes-from).
 
 ![The Pockets panel: three slots just filled with Nook Miles Tickets, shown in amber until applied](docs/screenshots/pockets.png)
 
@@ -90,7 +90,7 @@ Do this once, with a save you can afford to lose. It answers two questions nobod
 
 Requirements: a Switch running Atmosphère, and Animal Crossing: New Horizons **3.0.x** (other save versions open read-only).
 
-1. Get the `switch/acnh_editor/` folder from the [Actions tab](../../actions) (latest green run, artifact `acnh-power-pockets`; a GitHub login is required) and copy it to the root of the SD card. Releases will follow once the app has been validated on a console.
+1. Get the `switch/acnh_power_pockets/` folder from the [Actions tab](../../actions) (latest green run, artifact `acnh-power-pockets`; a GitHub login is required) and copy it to the root of the SD card. Releases will follow once the app has been validated on a console.
 2. Fully close the game: HOME › highlight Animal Crossing › **X** › Close. A suspended game overwrites your edits on its next autosave.
 3. Hold **R** while starting Animal Crossing to open the Homebrew Menu, then launch **ACNH Power Pockets**. Launching from the Album is refused: it doesn't give the app enough access.
 
@@ -98,15 +98,17 @@ The folder should contain:
 
 | File | Needed? |
 |---|---|
-| `acnh_editor.nro`, `font.ttf` | Required |
+| `acnh_power_pockets.nro`, `font.ttf` | Required |
 | `items.txt` | Strongly recommended: item names, favorites and the `1/slot` protection depend on it |
 | `icon.png`, `ui_icons.png`, `item_glyphs.png`, `item_glyphs.txt`, `nonstackable.txt` | Optional: icons, item pictures, extra `1/slot` rules |
 
 ### Already using ACNH-Save-Editor?
 
-Power Pockets uses the same file name and folder as upstream (`switch/acnh_editor/acnh_editor.nro`), so copying it **replaces** the upstream app. That is intended. A `.nro` has no application ID, so nothing can clash on the console itself, and a forwarder that points to that file simply opens Power Pockets.
+Power Pockets has its own file name and its own folder (`switch/acnh_power_pockets/acnh_power_pockets.nro`). Nothing is replaced and nothing is shared: its backups, loadouts and settings are separate from those of upstream, which stays in `switch/acnh_editor/`. A `.nro` has no application ID, so the two can't clash on the console.
 
-Your upstream backups, loadouts and settings stay in the folder and keep working. Keeping both apps under different file names is possible but not recommended: they would share the same backup files, and upstream writes to the save on a single press.
+- To bring your loadouts over, copy `l_0.dat` … `l_4.dat` from `switch/acnh_editor/` into `switch/acnh_power_pockets/`.
+- Don't copy `backup_*.dat`: Power Pockets only restores backups that match the current save, and makes its own.
+- Both apps edit the same save. Use one at a time, and remember that upstream writes on a single press of **A**.
 
 ## Using it
 
@@ -146,7 +148,7 @@ Your upstream backups, loadouts and settings stay in the folder and keep working
 
 **Every Apply:**
 1. Before its first write, copies the console's current save to `session_*.dat` on the SD card: the **pre-edit backup**. It is kept, across relaunches too, for as long as the console still holds what the app wrote last. Once the game has saved again, the next Apply takes a fresh one. So it always holds the last state written by the game itself.
-2. Hands your changes to the unchanged upstream engine. The engine first writes `backup_*.dat` (the state before this Apply), then writes and commits the save.
+2. Hands your changes to the upstream engine. The engine first writes `backup_*.dat` (the state before this Apply), then writes and commits the save.
 3. Reloads the "original" state only if every step succeeded. If anything fails, your changes stay pending and the app says what happened.
 
 **Before any restore**, the backup is checked on a decrypted copy: sizes and value checksums must match, and it may only differ from the current save where this app writes (pockets, the four values, eight repair fields). Otherwise the restore is refused. A backup that is incomplete, damaged, or older than the game's last save is never offered.
@@ -166,7 +168,7 @@ Your upstream backups, loadouts and settings stay in the folder and keep working
 
 ## Files on the SD card
 
-All in `sdmc:/switch/acnh_editor/`.
+All in `sdmc:/switch/acnh_power_pockets/`.
 
 | File | Written by | What it is |
 |---|---|---|
@@ -202,7 +204,7 @@ Tools (axes, nets, fishing rods, shovels, watering cans, slingshots, ladder, vau
 | Symptom | Fix |
 |---|---|
 | "The save can't be opened" | The game is still running or suspended. Close it fully (HOME › X › Close), then relaunch through the game holding **R**. |
-| Red "missing file" or "unreadable file" text at launch | `font.ttf` is missing from `sdmc:/switch/acnh_editor/`, or its copy is damaged. |
+| Red "missing file" or "unreadable file" text at launch | `font.ttf` is missing from `sdmc:/switch/acnh_power_pockets/`, or its copy is damaged. |
 | Names show as `ID 16DB` | `items.txt` is missing. Editing still works, but favorites become read-only and the `1/slot` protection is off: put the file back before placing items. |
 | No pictures next to the items | `item_glyphs.png` or `item_glyphs.txt` is missing. System › Info says "no pictures". |
 | Stuck on "Reading the save…" | Not frozen. After an edit, and until the game has saved again, the launch scan is slow (minutes after a loan edit). |
@@ -222,7 +224,7 @@ Each push builds the `.nro` in GitHub Actions (`devkitpro/devkita64` container) 
 You can check the project without a Switch:
 ```sh
 git remote add upstream https://github.com/cbreezy210/ACNH-Save-Editor.git && git fetch upstream
-python3 tools/check_engine_untouched.py upstream/main   # proves the save engine is byte-identical to upstream
+python3 tools/check_engine_untouched.py upstream/main   # proves the save engine matches upstream, SD folder name aside
 sh tests/host/run.sh            # unit tests, parser fuzzing, item-picture rules vs the design tool, compile check
 sh tests/host/engine_bench.sh   # the real main.cpp on a fake console: byte-exact Apply / restore / Doctor, injected failures
 sh tests/host/ui_shots.sh       # the real UI with a fake engine: flows and failure dialogs, with screenshots
@@ -232,7 +234,7 @@ The two `ui_*` scripts need SDL2 and SDL2_ttf (`brew install sdl2 sdl2_ttf`) and
 
 | Path | Contents |
 |---|---|
-| `source/main.cpp` | Upstream save engine (unchanged) and the wiring to the UI |
+| `source/main.cpp` | Upstream save engine and the wiring to the UI |
 | `source/pp_model.*` | Testable logic: slots, pending changes, favorites, `1/slot` and picture rules, backup checks |
 | `source/pp_ui.*`, `source/pp_strings.h` | Panels, dialogs, every on-screen string |
 | `tools/` | Engine check, and the scripts that draw the logo, icons and item pictures |
@@ -245,7 +247,7 @@ The documents in `docs/` are written in French.
 
 ## Where it comes from
 
-Power Pockets starts from [ACNH-Save-Editor](https://github.com/cbreezy210/ACNH-Save-Editor) v1.4.1 (commit `731c228`) by cbreezy210, a native Switch save editor for Animal Crossing. Everything that reads, decrypts, encrypts and writes the save is upstream code. A script checks on every push that it is unchanged.
+Power Pockets starts from [ACNH-Save-Editor](https://github.com/cbreezy210/ACNH-Save-Editor) v1.4.1 (commit `731c228`) by cbreezy210, a native Switch save editor for Animal Crossing. Everything that reads, decrypts, encrypts and writes the save is upstream code. One thing was changed in it: the SD folder in the paths of its own files (`backup_*.dat`, `damaged_*.dat`, `layout_*.dat`), so that Power Pockets and upstream never share a file. A script checks on every push that this is the only difference, down to the byte.
 
 What changed is everything you see and touch:
 

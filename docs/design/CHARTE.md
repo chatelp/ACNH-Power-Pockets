@@ -176,7 +176,7 @@ Les symboles utilisés dans la spec UX (`●`, `✓`, `⚠`, `→`, `★`, `Ⓐ`
 
 ### 4.3 Planche d'icônes `ui_icons.png` (proposée)
 
-Un seul PNG RGBA de 24 px de haut, une icône tous les 24 px, chargé avec le `stbi_load` déjà utilisé pour `icon.png` (`main.cpp:485`) et découpé par `srcrect`. Copié dans `sdmc:/switch/acnh_editor/` à côté de `font.ttf`. Rendu en 20×20 dans l'interface.
+Un seul PNG RGBA de 24 px de haut, une icône tous les 24 px, chargé avec le `stbi_load` déjà utilisé pour `icon.png` (`main.cpp:485`) et découpé par `srcrect`. Copié dans `sdmc:/switch/acnh_power_pockets/` à côté de `font.ttf`. Rendu en 20×20 dans l'interface.
 
 | Index | Nom | Couleurs |
 |---|---|---|
@@ -405,7 +405,7 @@ Décision du 2026-11-11 : le badge « SD » qui marquait un favori ajouté par l
 - **Texte** : `TTF_RenderUTF8_Blended` (déjà utilisé). Les textures sont **mises en cache** et reconstruites seulement quand le contenu change (`needDraw`, comme aujourd'hui), jamais à chaque frame. Centrage avec `SDL_QueryTexture`, troncature avec `TTF_SizeUTF8`. Seule la jauge du dialogue danger se redessine à chaque frame (rectangle, pas de texte).
 - **Ordre de dessin** : fond → panneau → en-tête → onglets → contenu → statut → (voile → menu, stepper ou dialogue) → pied d'aide.
 - **Motif de pois** : dessiné une fois dans une texture cible 1280×720 (`SDL_TEXTUREACCESS_TARGET`), sinon sauté.
-- **Images** : `icon.png` (existant) et `ui_icons.png` (proposé), dans `sdmc:/switch/acnh_editor/`, avec un repli si le fichier est absent.
+- **Images** : `icon.png` (existant) et `ui_icons.png` (proposé), dans `sdmc:/switch/acnh_power_pockets/`, avec un repli si le fichier est absent.
 - **Exemple de tokens (documentation seulement, aucun fichier créé dans `source/`)** :
 
 ```cpp

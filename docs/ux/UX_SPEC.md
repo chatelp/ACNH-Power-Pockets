@@ -133,7 +133,7 @@ Justification :
 - Volet aperçu optionnel : les 20 slots du loadout focalisé en lecture seule (lecture du fichier `l_N.dat`, 160 octets).
 
 #### Panneau 6 — Système
-- **Infos** : version, dossier SD `sdmc:/switch/acnh_editor/`, présence et taille des fichiers `backup_personal.dat` / `backup_main.dat` (et date de modification si disponible via `stat`), nombre d'items chargés depuis `items.txt`, nombre de favoris, nombre d'entrées `nonstackable.txt`, nombre de régions détectées (`pRegC`, `mRegC`).
+- **Infos** : version, dossier SD `sdmc:/switch/acnh_power_pockets/`, présence et taille des fichiers `backup_personal.dat` / `backup_main.dat` (et date de modification si disponible via `stat`), nombre d'items chargés depuis `items.txt`, nombre de favoris, nombre d'entrées `nonstackable.txt`, nombre de régions détectées (`pRegC`, `mRegC`).
 - **Actions** (liste) :
   1. *Recharger favoris et liste 1/slot depuis la SD*
   2. *Restaurer le backup SD → NAND* — **danger** (rouge)
@@ -343,7 +343,7 @@ Sur un slot marqué modifié : `Ⓐ→«Rétablir l'original»` → recopie les 
 
 ### 5.6 Ajouter / retirer un favori
 
-Sources : liste intégrée `FAV_NAMES` (22 noms, inchangée) + surcouche utilisateur `sdmc:/switch/acnh_editor/user_favorites.txt`.
+Sources : liste intégrée `FAV_NAMES` (22 noms, inchangée) + surcouche utilisateur `sdmc:/switch/acnh_power_pockets/user_favorites.txt`.
 
 **Ajouter** — depuis le Catalogue (ou depuis un slot de poche : `Ⓐ→«Ajouter aux favoris»`) :
 1. Focus sur un résultat sans badge `★`. `Ⓐ→«Ajouter aux favoris»`.
@@ -368,7 +368,7 @@ Sources : liste intégrée `FAV_NAMES` (22 noms, inchangée) + surcouche utilisa
 
 ### 5.7 Items non empilables
 
-**Source** : liste intégrée (outils, meubles… à définir, voir Q6) + surcouche `sdmc:/switch/acnh_editor/nonstackable.txt` :
+**Source** : liste intégrée (outils, meubles… à définir, voir Q6) + surcouche `sdmc:/switch/acnh_power_pockets/nonstackable.txt` :
 ```
 # une entrée par ligne : ID hex préfixé 0x, ou nom exact d'items.txt
 0x0A1B
@@ -597,7 +597,7 @@ Les listes `FAV_NAMES`, `LOADOUT_NAMES`, `findItemIdByName`, `favAlphaLess`, `it
 
 | Cas | Détection | Ce que voit l'utilisateur | État après |
 |---|---|---|---|
-| **`font.ttf` manquant** | `TTF_OpenFont` renvoie `nullptr` (l.475-477) — sinon l'écran reste vide | Avant l'init SDL (ou en repli), écran console comme la garde Applet : « font.ttf introuvable dans sdmc:/switch/acnh_editor/. Copiez-le depuis l'archive de l'app. Ⓐ pour quitter. » | App quittée, rien écrit. |
+| **`font.ttf` manquant** | `TTF_OpenFont` renvoie `nullptr` (l.475-477) — sinon l'écran reste vide | Avant l'init SDL (ou en repli), écran console comme la garde Applet : « font.ttf introuvable dans sdmc:/switch/acnh_power_pockets/. Copiez-le depuis l'archive de l'app. Ⓐ pour quitter. » | App quittée, rien écrit. |
 | **`items.txt` manquant** | `fopen` échoue (l.490) | Bannière ambre persistante : « items.txt introuvable : noms d'items indisponibles. » Les poches affichent les IDs (« ID 16A2 »). Favoris et Catalogue : état vide explicatif. L'édition des poches (pipette, quantités, vider, saisie d'ID) et de l'argent reste possible. | Fonctionnel en mode dégradé. |
 | **Save non montable** (jeu ouvert) | `fsOpenSaveDataFileSystem` échoue (l.526) | Écran bloquant : « Impossible d'ouvrir la save. Fermez complètement Animal Crossing (HOME → X), puis relancez l'app via le titre du jeu en maintenant R. » Ⓐ Quitter. | Aucun panneau d'édition. |
 | **Fichiers save illisibles** | l.591 | Écran bloquant « Lecture de la save impossible (personal.dat / main.dat). » | Idem. |
@@ -643,7 +643,7 @@ Les listes `FAV_NAMES`, `LOADOUT_NAMES`, `findItemIdByName`, `favAlphaLess`, `it
 | Non empilables | Aucun contrôle | Badge « 1/slot », quantité forcée à 1 sur toute action utilisateur (`nonstackable.txt`). |
 | Édition directe de l'ID (ligne « Item » ±1/±256) | Oui | Remplacée par « Saisir un ID (hex)… » dans le menu d'un slot. |
 | Charger un loadout | Écrit dans le tampon, puis « press A to save » | Devient une modif en attente visible dans le Récap ; fichier tronqué n'abîme plus le tampon. |
-| Nouveaux fichiers SD | — | `user_favorites.txt` (+ `.tmp`/`.bak`), `nonstackable.txt` (optionnel). Le dossier reste `sdmc:/switch/acnh_editor/`. |
+| Nouveaux fichiers SD | — | `user_favorites.txt` (+ `.tmp`/`.bak`), `nonstackable.txt` (optionnel). Le dossier est `sdmc:/switch/acnh_power_pockets/` (décision du 2026-11-11 : dossier et `.nro` propres à Power Pockets, rien n'est partagé avec l'upstream). |
 
 Inchangé : moteur de sauvegarde, emplacement et format des backups (`backup_personal.dat`, `backup_main.dat`), loadouts `l_0..4.dat`, `layout_*.dat`, `damaged_*.dat`, bornes des valeurs (quantité 1…99, Wallet/Bank ≤ 999 999 999, Miles/Loan ≤ 9 999 999), garde mode Applet.
 
