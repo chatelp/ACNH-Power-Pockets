@@ -1,3 +1,5 @@
+> **Note (ACNH Power Pockets):** this is the roadmap of the upstream project, [ACNH-Save-Editor](https://github.com/cbreezy210/ACNH-Save-Editor) by cbreezy210, kept unchanged for history. It is not the plan of ACNH Power Pockets, and its "shipped" items describe upstream releases.
+
 # 🗺️ ACNH Save Editor — Roadmap
 **The ACNH companion tool that never leaves your Switch.**
 

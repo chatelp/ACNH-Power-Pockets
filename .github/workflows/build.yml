@@ -53,6 +53,8 @@ jobs:
           cp acnh_power_pockets.nro icon.png dist/switch/acnh_power_pockets/
           cp assets/font.ttf assets/items.txt assets/ui_icons.png assets/nonstackable.txt dist/switch/acnh_power_pockets/
           cp assets/item_glyphs.png assets/item_glyphs.txt dist/switch/acnh_power_pockets/
+          cp LICENSE THIRD_PARTY_NOTICES.md dist/switch/acnh_power_pockets/
+          cp -R licenses dist/switch/acnh_power_pockets/
       - uses: actions/upload-artifact@v4
         with:
           name: acnh-power-pockets

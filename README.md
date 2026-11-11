@@ -284,7 +284,9 @@ Pull requests are welcome for the interface, tests and docs. Changes to the save
 
 MIT. See [LICENSE](LICENSE). Copyright cbreezy210 (upstream) and the Power Pockets contributors.
 
+Two shipped data files keep their own license (details in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md), texts in [`licenses/`](licenses)): `items.txt`, the item names table from NHSE (GPL-3.0), and `font.ttf`, the Varela Round font (SIL OFL 1.1).
+
 - **cbreezy210** — [ACNH-Save-Editor](https://github.com/cbreezy210/ACNH-Save-Editor), the save engine this project runs on.
-- **kwsch and [NHSE](https://github.com/kwsch/NHSE)** — the ACNH save-format research everything here relies on.
+- **kwsch and [NHSE](https://github.com/kwsch/NHSE)** — the ACNH save-format research everything here relies on, and the item names table (`items.txt`, GPL-3.0).
 - **[devkitPro](https://devkitpro.org) / libnx**, **SDL2**, **SDL_ttf**, **stb_image**.
-- **Varela Round** font (SIL Open Font License 1.1).
+- **Varela Round** font by The Varela Round Project Authors (SIL Open Font License 1.1).
