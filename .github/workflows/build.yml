@@ -28,8 +28,13 @@ jobs:
     container: devkitpro/devkita64:latest
     steps:
       - uses: actions/checkout@v4
-      - name: Portlibs
-        run: dkp-pacman -Syu --noconfirm --needed switch-sdl2 switch-sdl2_ttf switch-freetype switch-harfbuzz switch-libpng switch-bzip2 switch-zlib switch-mesa
+      # The image already ships the Switch portlibs; pkg.devkitpro.org refuses
+      # package downloads from CI runners (HTTP 403), so only check they are there.
+      - name: Portlibs present
+        run: |
+          for l in SDL2 SDL2_ttf freetype harfbuzz png16 bz2 z EGL glapi drm_nouveau; do
+            ls "$DEVKITPRO/portlibs/switch/lib/lib$l.a" || exit 1
+          done
       - name: Build
         run: make -j"$(nproc)"
       - name: Package (SD card layout)
