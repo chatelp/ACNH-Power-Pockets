@@ -22,6 +22,17 @@
 #include <algorithm>
 #include <cctype>
 #include <functional>
+// The C spellings too: libstdc++'s <stdlib.h> wrapper has its own include guard and
+// does "using std::malloc;", which must not see the rename below (stb_image includes it).
+#include <stdlib.h>
+#include <string.h>
+#include <stdio.h>
+#include <stdint.h>
+#include <stddef.h>
+#include <stdarg.h>
+#include <limits.h>
+#include <math.h>
+#include <assert.h>
 #include "pp_model.h"
 #include "pp_ui.h"
 
