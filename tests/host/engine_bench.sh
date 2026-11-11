@@ -23,7 +23,8 @@ cc() {  # cc <source> <object> [extra flags]
 
 echo "== engine bench (real main.cpp, fake Switch platform) =="
 # main() becomes pp_app_main(); malloc() in main.cpp only goes through the fault injector.
-cc "$SRC/main.cpp" "$OUT/main.o" -Dmain=pp_app_main -Dmalloc=pp_bench_malloc
+# Both renames live in engine/main_under_test.cpp, which includes "$SRC/main.cpp" as is.
+cc "$ROOT/tests/host/engine/main_under_test.cpp" "$OUT/main.o"
 cc "$SRC/pp_model.cpp" "$OUT/pp_model.o"
 cc "$SRC/pp_ui.cpp" "$OUT/pp_ui.o"
 cc "$ROOT/tests/host/engine/fake_platform.cpp" "$OUT/fake_platform.o"

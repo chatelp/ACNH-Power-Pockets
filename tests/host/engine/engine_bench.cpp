@@ -25,7 +25,7 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
-int pp_app_main(int argc, char** argv);                       // source/main.cpp, built with -Dmain=pp_app_main
+int pp_app_main(int argc, char** argv);                       // source/main.cpp, renamed in main_under_test.cpp
 void CryptACNH(const uint8_t* header, uint8_t* data, size_t dataLen);   // engine (symmetric AES-CTR)
 
 using namespace fake;

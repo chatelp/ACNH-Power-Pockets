@@ -87,7 +87,7 @@ void reset() {
 
 using namespace fake;
 
-// Replacement for malloc() in main.cpp only (-Dmalloc=pp_bench_malloc).
+// Replacement for malloc() in main.cpp only (see main_under_test.cpp).
 extern "C" void* pp_bench_malloc(size_t size) {
     if (faults.mallocFailSize && size == faults.mallocFailSize && faults.mallocFailCount > 0) {
         if (faults.mallocFailSkip > 0) faults.mallocFailSkip--;
@@ -244,6 +244,7 @@ SDL_Texture* SDL_CreateTextureFromSurface(SDL_Renderer*, SDL_Surface* s) {
 }
 int SDL_UpdateTexture(SDL_Texture*, const SDL_Rect*, const void*, int) { return 0; }
 int SDL_SetTextureBlendMode(SDL_Texture*, SDL_BlendMode) { return 0; }
+int SDL_SetTextureColorMod(SDL_Texture*, Uint8, Uint8, Uint8) { return 0; }
 int SDL_QueryTexture(SDL_Texture*, Uint32*, int*, int*, int*) { return 0; }
 void SDL_DestroyTexture(SDL_Texture* t) {
     for (size_t i = 0; i < g_live.size(); i++) if (g_live[i].first == t) { g_live.erase(g_live.begin() + (long)i); break; }
