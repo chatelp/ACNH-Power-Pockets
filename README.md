@@ -1,162 +1,222 @@
-# ACNH Power Pockets 🍃
+# ACNH Power Pockets
 
-**Powerful, safe inventory editing for Animal Crossing: New Horizons, right on your Switch.**
-
-> **ACNH Power Pockets is a fork of [ACNH-Save-Editor](https://github.com/cbreezy210/ACNH-Save-Editor) by cbreezy210** (based on v1.4.1, upstream commit `731c228`).
-> The save engine (decryption, encryption, value encoding, SD backups, restore, Save Doctor) is the upstream one, **unchanged**. This fork rebuilds the interface around inventory work. All credit for the engine goes to cbreezy210 and the projects listed in [Credits](#credits).
-
-> **Note:** This is an educational project. Always keep your own backups. Modifying save data always carries a risk. Use offline, at your own risk. Not affiliated with Nintendo.
+> [!CAUTION]
+> **This tool writes directly to your Animal Crossing: New Horizons save. It can corrupt it, and a corrupted island may be impossible to recover.**
 >
-> **Responsible use:** Please don't trade or use unreleased/internal items in online play.
+> - **Back up your save with [JKSV](https://github.com/J-D-K/JKSV) or [Checkpoint](https://github.com/BernardoGiordano/Checkpoint) before every editing session, and copy that backup to a computer.** The app's own SD backups are a safety net, not a replacement.
+> - **Version 1.0.0 has not been validated on real hardware yet.** It has been tested on a computer only, against a simulated engine. Do the [first-use test](#first-use-test) on a save you can afford to lose before touching your real island.
+> - The save engine inherited from upstream **does not recompute the save's integrity hashes** (see [Known limitations](#known-limitations)). Whether the game tolerates this on your version is not proven.
+> - Offline use only. Editing saves can get you into trouble online and may break Nintendo's terms of service. Never trade edited or unreleased items with other players.
+> - Provided **as is, with no warranty of any kind** (MIT license). You alone are responsible for what happens to your save, your console and your accounts. Not affiliated with or endorsed by Nintendo.
+
+**ACNH Power Pockets fills your pockets fast and shows you every change before writing a single byte.** It runs on the Switch itself (homebrew, Atmosphère) and edits the 20 pocket slots, Bells, Nook Miles and the house loan of the primary resident.
+
+It is a fork of [ACNH-Save-Editor](https://github.com/cbreezy210/ACNH-Save-Editor) by cbreezy210: same save engine, new interface built around inventory work. See [Where it comes from](#where-it-comes-from).
+
+![Pockets panel after filling 10 slots](docs/screenshots/pockets.png)
 
 ---
 
-## Why this fork
+## Contents
 
-ACNH-Save-Editor made on-console save editing possible. Power Pockets keeps its engine and focuses on one job: **editing your pockets quickly without ever surprising you.**
+- [What you get](#what-you-get)
+- [First-use test](#first-use-test)
+- [Install](#install)
+- [Using it](#using-it)
+- [How your save is protected](#how-your-save-is-protected)
+- [Known limitations](#known-limitations)
+- [Files on the SD card](#files-on-the-sd-card)
+- [Troubleshooting](#troubleshooting)
+- [Building and testing](#building-and-testing)
+- [Where it comes from](#where-it-comes-from)
+- [Contributing](#contributing)
+- [License and credits](#license-and-credits)
 
-| Problem in upstream | Power Pockets |
+## What you get
+
+- **Ten slots in ten presses.** Pick an item once (favorite, search, or an item already in your pockets). Each press of **Y** drops it in the next empty slot.
+- **Nothing is written until you say so.** Every edit stays in memory. The **Review** screen lists each change as *before » after*. **Apply** writes everything in one go, **Discard** throws it all away.
+- **Your items are never overwritten by accident.** Placing only targets empty slots. Replacing an item takes an explicit *Clear slot* first.
+- **Favorites you manage yourself.** Star or unstar any item from the app. Your list lives in `user_favorites.txt` on the SD card, on top of 22 built-in favorites.
+- **Honest quantities.** Tools and other items that never stack carry a `1/slot` badge. The app doesn't ask for a quantity it can't deliver. You can extend the list in `nonstackable.txt`.
+- **Dangerous actions are hard to trigger.** Restoring a backup and the Save Doctor write to the console immediately. They live in the System panel, in red, need **A** held for 1.5 seconds, and are blocked while you have unapplied changes.
+
+| | |
 |---|---|
-| Putting the same item in 10 slots meant 10 searches or editing `items.txt`. | Take an item once, then press **Y** ten times: the next 10 **empty** slots are filled. |
-| Favorites were a fixed list compiled into the app. | Add or remove favorites from the app. They are saved to `user_favorites.txt` on the SD card. |
-| The quantity field was shown for items that never stack (tools…). | `1/slot` badge, no quantity prompt, neutral value written. You can edit the list in `nonstackable.txt`. |
-| Pressing **A** wrote to the console save immediately, one slot at a time. | Every change is prepared in memory. **Review** lists them before → after, then **Apply** writes them all at once. |
-| **ZL** restored the backup in one press. **ZR ZR** ran the Save Doctor. | Both moved to the **System** panel, behind a red hold-to-confirm dialog. Blocked while changes are pending. |
-| Eight buttons with a different meaning on each screen. | Six panels (**L**/**R**), **A** opens an action menu, **Y** does the obvious thing, **B** closes. |
+| ![Action menu](docs/screenshots/slot-menu.png) | ![Review screen](docs/screenshots/review.png) |
+| ![Catalog search](docs/screenshots/catalog.png) | ![Hold-to-confirm dialog](docs/screenshots/danger-dialog.png) |
 
-![Pockets panel](docs/screenshots/pockets.png)
+## First-use test
 
-## Safety first: what is kept, what is added
+Do this once, with a save you can afford to lose. It answers two questions nobody has checked yet on this version: does the game accept a save written by this tool, and how does the game count stacks?
 
-**Kept from upstream (same code, verified byte-for-byte by `tools/check_engine_untouched.py`):**
-- Automatic SD backup of the console state before every write (`backup_personal.dat`, `backup_main.dat`).
-- The same encryption and EncryptedInt32 checksum re-encoding for Wallet, Bank, Nook Miles and House loan.
-- The same value limits (quantity 1–99, Wallet/Bank ≤ 999,999,999, Miles/Loan ≤ 9,999,999).
-- Restore from SD backup and Save Doctor, moved verbatim into the System panel.
-- The Album/applet launch guard.
+1. Back up the save with JKSV or Checkpoint and copy the backup to a computer.
+2. Launch Power Pockets. Put **Nook Miles Ticket** in an **empty** slot with quantity **9** (*Favorites* › *Take with quantity…* › 9, then **Y** in *Pockets*). Press **+**, then **Apply**.
+3. Start the game:
+   - **The save doesn't load, or the game offers to restore it:** stop. Restore your JKSV/Checkpoint backup and [open an issue](../../issues) with your game version.
+   - **You get 10 tickets:** the game stores "quantity − 1". Displayed quantities are off by one until `kCountZeroBased` is set to `true` in `source/pp_model.h`. Please report it.
+   - **You get 9 tickets:** quantities are exact.
+4. Save in the game, quit, reopen Power Pockets and look at **System › Info › Region hashes**. Report what you see. It tells us whether the game repairs the hashes on its own.
 
-**Added by Power Pockets (UI side only):**
-- **Prepare, review, apply.** Nothing reaches the save until **Review > Apply**, which calls the upstream `doSave()` exactly once. **Discard** (−) drops everything in memory and writes nothing.
-- **Never overwrites an item by accident.** Placing only targets empty slots. To replace an item, clear it first (explicit).
-- **Start-of-session backup.** Before the first write of a session, the console state is also copied to `session_personal.dat` / `session_main.dat`. Those files are never overwritten during that session, even if you apply several times.
-- **Backup validation** before any restore. Size and checksums are checked on a decrypted copy, so an empty or truncated backup is refused.
-- **Guards.** Restore and Doctor are blocked while changes are pending, after an incomplete SD backup, or after a failed repair. Editing is disabled (read-only) if the save files don't have the expected 3.0.x sizes.
-- **Hold to confirm** (1.5 s) for every action that writes the console save directly.
+## Install
 
-> **Honest note on integrity hashes.** The upstream README mentions automatic "hash healing". The inherited code finds the Murmur3 hash regions but **does not recompute them** when writing ([audit](docs/engine/AUDIT_ECRITURE.md), point h). Power Pockets does not change the engine, so this is unchanged. System > Info shows how many region hashes currently match. Run the first-use test below before editing your real island.
+Requirements: a Switch running Atmosphère, and Animal Crossing: New Horizons **3.0.x** (other save versions open read-only).
 
-## First use: a 5-minute test (strongly recommended)
+1. Copy the `switch/acnh_editor/` folder to the root of the SD card. It contains `acnh_editor.nro`, `font.ttf`, `items.txt`, `icon.png`, `ui_icons.png` and `nonstackable.txt`. Builds come from the [Actions tab](../../actions) (artifact `acnh-power-pockets`) until releases are published.
+2. Fully close the game: HOME › highlight Animal Crossing › **X** › Close. A suspended game overwrites your edits on its next autosave.
+3. Hold **R** while starting Animal Crossing to open the Homebrew Menu, then launch **ACNH Power Pockets**. Launching from the Album is refused: it doesn't give the app enough access.
 
-1. Make a full backup of your ACNH save with **JKSV** or **Checkpoint** and copy it to a PC.
-2. In Power Pockets, put one stackable item (e.g. Nook Miles Ticket ×9) in an **empty** slot, then **+ > Apply**.
-3. Start the game. Does the save load? How many tickets do you get: 9 or 10?
-   - 10 means the game stores "quantity − 1". Tell us (or set `kCountZeroBased = true` in `source/pp_model.h`) so quantities display exactly.
-4. Save in game, quit, reopen Power Pockets: System > Info shows the region hashes.
-5. If the save doesn't load: restore your JKSV/Checkpoint backup and open an issue.
+The folder name is `acnh_editor`, the same as upstream ACNH-Save-Editor. Power Pockets replaces it and reuses its backups, loadouts and settings. Don't run both apps side by side.
 
-## Panels and controls
+## Using it
 
-| Button | Everywhere |
+### Buttons
+
+| Button | Does |
 |---|---|
-| **L / R** | Previous / next panel (no wrap: System is always at the far right) |
-| **D-pad / left stick** | Move. Long press repeats. |
-| **A** | Open the action menu of the selected item (the first entry is what **Y** does) |
-| **Y** | Quick action: place (Pockets), take (Favorites/Catalog), modify (Bells & Miles), load (Loadouts) |
-| **B** | Close the menu / dialog / stepper |
-| **+** | **Review**: every pending change before → after, then **Apply**, **Apply & quit**, **Discard all**, **Quit without applying** |
-| **−** | Discard all pending changes (asks first) |
-| **ZL / ZR / X** | Nothing. ZL no longer restores and ZR no longer runs the Doctor. |
-| **HOME** | Leaves without writing anything that wasn't applied |
+| **L / R** | Switch panel |
+| **D-pad / left stick** | Move (hold to repeat) |
+| **A** | Open the action menu for the selected thing |
+| **Y** | Its default action (the first line of that menu) |
+| **B** | Close a menu, dialog or number editor |
+| **+** | Review pending changes, then Apply / Discard / Quit |
+| **−** | Discard all pending changes |
+| **ZL, ZR, X** | Nothing, on purpose |
 
-| Panel | What you do there |
+### Panels
+
+| Panel | For |
 |---|---|
-| **Pockets** | 20 slots (1–10 left, 11–20 right). **Y** places the item in hand into the next empty slot. **A** gives: Fill empty slots, Take in hand, Quantity…, Held quantity…, Enter item ID (hex)…, Add/Remove favorite, Revert to original, Clear slot. |
-| **Favorites** | Built-in favorites + yours, A–Z. **Y** takes the item and returns to Pockets. **A**: Take with quantity…, Remove from favorites, Restore default favorites. |
-| **Catalog** | Search the item database by name or by 4-digit hex ID. ★ marks favorites, `1/slot` marks items that don't stack. |
-| **Bells & Miles** | Wallet, Bank, Nook Miles, House loan, with a stepper (±1,000 / ±100,000, ×10 after holding 2 s), typed values, max, 0, revert. A warning appears above the game's wallet max (99,999). |
-| **Loadouts** | 5 pocket setups on the SD card, with a preview. Loading one is a pending change like any other. |
-| **System** | Restore SD backup, Restore start-of-session backup, Save Doctor (red, hold A), reload favorites and 1/slot rules, Info, Quit. |
+| **Pockets** | The 20 slots. **Y** places the item in hand in the next empty slot (or picks up the item under the cursor when your hand is empty). Menu: *Fill empty slots*, *Take in hand*, *Quantity…*, *Held quantity…*, *Enter item ID (hex)…*, *Add/Remove favorite*, *Revert to original*, *Clear slot*. |
+| **Favorites** | Your favorites, A to Z. **Y** takes one and jumps back to Pockets. |
+| **Catalog** | Search all ~15,000 items by name or 4-digit hex ID. |
+| **Bells & Miles** | Wallet, Bank, Nook Miles, House loan. Step with the D-pad (±1,000 / ±100,000, ×10 after holding 2 s) or type a value. |
+| **Loadouts** | Five saved pocket setups on the SD card. Loading one counts as a pending change. |
+| **System** | Restore backups, Save Doctor, reload your lists, diagnostics, quit. |
 
-**Example: 10 Nook Miles Tickets ×10.** **R** (Favorites) > select *Nook Miles Ticket* > **A** > *Take with quantity…* > set 10 > **A**. You're back in Pockets: press **Y** ten times, then **+ > Apply**.
+### Recipes
 
-## SD card files
+- **Ten stacks of Nook Miles Tickets:** **R** › *Nook Miles Ticket* › **A** › *Take with quantity…* › 10 › **A**, then **Y** ×10, then **+** › **Apply**.
+- **Copy something you already carry:** in *Pockets*, select it and press **Y** with an empty hand to pick it up, then **Y** again to place copies.
+- **Fill every free slot:** take an item, then **A** › *Fill empty slots*.
+- **Undo one slot:** **A** › *Revert to original*. **Undo everything:** **−**.
+- **Add a favorite:** find the item in *Catalog* › **A** › *Add to favorites*.
 
-Everything lives in `sdmc:/switch/acnh_editor/` (same folder as upstream, so backups and loadouts are shared).
+## How your save is protected
 
-| File | Who writes it | Purpose |
+**Every Apply:**
+1. The first time in a session, copies the console's current save to `session_*.dat` on the SD card. This copy isn't overwritten again during that session.
+2. Hands your changes to the unchanged upstream engine. The engine first writes `backup_*.dat` (the state before this Apply), then writes and commits the save.
+3. Reloads the "original" state only if every step succeeded. If anything fails, your changes stay pending and the app says what happened.
+
+**Before any restore**, the backup is checked on a decrypted copy: size and value checksums must match this save, otherwise the restore is refused. A backup that wasn't written completely is never offered.
+
+**What this does *not* protect you from:** a game version with a different save layout (the app goes read-only when file sizes are unexpected, but that check is not exhaustive), the integrity hashes noted below, power loss at the wrong moment, or SD card failure. That is why the JKSV/Checkpoint backup at the top of this page matters.
+
+## Known limitations
+
+- **Integrity hashes are not recomputed.** The save is split into regions protected by Murmur3 hashes. The engine finds them but doesn't update them after an edit. This is inherited from upstream and deliberately left alone (this fork doesn't touch the engine). System › Info shows how many hashes match.
+- **Quantity convention unconfirmed:** see the [first-use test](#first-use-test).
+- **Only the primary resident** (`Villager0`) and **only the 20 pocket slots** (not the bag expansion).
+- **Save versions 3.0.x only**; anything else is read-only.
+- Item names are English, from `items.txt`.
+
+## Files on the SD card
+
+All in `sdmc:/switch/acnh_editor/`.
+
+| File | Written by | What it is |
 |---|---|---|
-| `acnh_editor.nro`, `font.ttf`, `items.txt`, `icon.png` | you (install) | App, font, item names (line number = item ID) |
-| `ui_icons.png` | you (install) | Star / check / warning / lock icons. Optional: text fallbacks are used without it. |
-| `nonstackable.txt` | you | Optional rules for `1/slot` items (format below) |
-| `user_favorites.txt` | the app | Your favorites. `.tmp` during a rewrite, `.bak` = your previous file. |
-| `backup_personal.dat`, `backup_main.dat` | the app (upstream engine) | Console state before the last Apply |
-| `session_personal.dat`, `session_main.dat` | the app | Console state before the first write of the current session |
-| `damaged_*.dat` | the app (Save Doctor) | Copy made before a repair |
-| `l_0.dat` … `l_4.dat`, `layout_*.dat` | the app (upstream) | Loadouts, save region layout cache |
+| `user_favorites.txt` | the app | Your favorites. Plain text, safe to edit. `.bak` keeps your previous version. |
+| `nonstackable.txt` | you | Extra `1/slot` rules (optional) |
+| `backup_personal.dat`, `backup_main.dat` | the app | Save as it was before the last Apply |
+| `session_personal.dat`, `session_main.dat` | the app | Save as it was before the first write of the current session |
+| `damaged_*.dat` | Save Doctor | Copy taken before a repair |
+| `l_0.dat` … `l_4.dat` | the app | Loadouts |
+| `layout_*.dat` | the app | Cache of the save's region layout |
 
-**`user_favorites.txt`** (managed by the app, safe to edit by hand):
+`user_favorites.txt` format:
 ```text
-+16A2 Nook Miles Ticket     added favorite (the hex ID is authoritative, the name is a hint)
--0A4E gold roses            built-in favorite you hid
++16A2 Nook Miles Ticket     a favorite you added (the hex ID counts, the name is a reminder)
+-0A4E gold roses            a built-in favorite you removed
 ```
-Bad lines are ignored and counted (System > Info). If `items.txt` is missing, the file is never rewritten. Limit: 64 favorites.
 
-**`nonstackable.txt`** (one rule per line, applied top to bottom):
+`nonstackable.txt` format (rules apply top to bottom):
 ```text
-golden axe     exact item name (case-insensitive)
+golden axe     exact item name, case-insensitive
 0x0A1B         item ID
-~wand          every name containing "wand"
--Wandering     remove what a rule matched
+~wand          every item whose name contains "wand"
+-Wandering     undo a match
 ```
-Tools (axes, nets, rods, shovels, watering cans, slingshots, ladder, vaulting pole) are always `1/slot`. The shipped file adds wands, saplings and sprouts.
+Tools (axes, nets, fishing rods, shovels, watering cans, slingshots, ladder, vaulting pole) are always `1/slot`. The shipped file adds wands, saplings and sprouts.
 
-## Installation
+## Troubleshooting
 
-1. Get the `switch/acnh_editor/` folder (release zip or CI artifact) and copy it to the root of your SD card, replacing the upstream `acnh_editor.nro` if you have it.
-2. Fully close Animal Crossing (HOME > X > Close).
-3. Hold **R** while starting Animal Crossing to open the Homebrew Menu, then launch **ACNH Power Pockets**. Never launch it from the Album.
+| Symptom | Fix |
+|---|---|
+| "The save can't be opened" | The game is still running or suspended. Close it fully (HOME › X › Close), then relaunch through the game holding **R**. |
+| Red "missing file" text at launch | `font.ttf` isn't in `sdmc:/switch/acnh_editor/`. |
+| Names show as `ID 16A2` | `items.txt` is missing. Editing still works; favorites become read-only. |
+| "Read-only: unsupported save version" | Your save isn't the 3.0.x layout this engine knows. Nothing will be written. |
+| Changes vanished in the game | The game was suspended while you edited, or you quit without **Apply**. |
+| Restore is greyed out | Apply or discard your pending changes first, or the last backup wasn't written completely (System › Info). |
 
-## Building
+## Building and testing
 
-Requires devkitPro with `switch-dev`, `switch-sdl2` and `switch-sdl2_ttf`:
-```text
+You need devkitPro with `switch-dev`, `switch-sdl2` and `switch-sdl2_ttf`. Then run:
+```sh
 make
 ```
-Every push also builds the `.nro` in CI (`.github/workflows/build.yml`, `devkitpro/devkita64` container) and uploads a ready-to-copy SD layout.
+Each push builds the `.nro` in GitHub Actions (`devkitpro/devkita64` container) and uploads the SD-card folder as an artifact.
 
-Checks that run without a Switch:
-```text
-python3 tools/check_engine_untouched.py      # engine identical to upstream (needs the upstream remote)
-sh tests/host/run.sh                         # model unit tests + syntax check against libnx/SDL2 stubs
-sh tests/host/ui_shots.sh                    # renders the real UI with a fake engine, checks flows, saves screenshots
+You can check the project without a Switch:
+```sh
+git remote add upstream https://github.com/cbreezy210/ACNH-Save-Editor.git && git fetch upstream
+python3 tools/check_engine_untouched.py upstream/main   # proves the save engine is byte-identical to upstream
+sh tests/host/run.sh                                     # unit tests + compile check against libnx/SDL2 stubs
+sh tests/host/ui_shots.sh                                # renders the real UI with a fake engine, checks flows, saves screenshots
 ```
-`ui_shots.sh` needs SDL2 + SDL2_ttf on the host (`brew install sdl2 sdl2_ttf`) and Pillow.
+`ui_shots.sh` needs SDL2, SDL2_ttf (`brew install sdl2 sdl2_ttf`) and Python Pillow.
 
-Code map: the engine stays in `source/main.cpp`. `source/pp_model.*` holds the testable logic (slots, pending changes, favorites, 1/slot rules). `source/pp_ui.*` draws the panels. `source/pp_strings.h` has every on-screen string. The design and UX specs are in `docs/design/CHARTE.md` and `docs/ux/UX_SPEC.md`. The engine audit is in `docs/engine/AUDIT_ECRITURE.md` (in French).
+| Path | Contents |
+|---|---|
+| `source/main.cpp` | Upstream save engine (unchanged) and the wiring to the UI |
+| `source/pp_model.*` | Testable logic: slots, pending changes, favorites, 1/slot rules |
+| `source/pp_ui.*`, `source/pp_strings.h` | Panels, dialogs, every on-screen string |
+| `docs/design/` | Visual design system and HTML mockups |
+| `docs/ux/UX_SPEC.md` | Interaction spec |
+| `docs/engine/AUDIT_ECRITURE.md` | Read-only audit of the save-writing code |
 
-## Changelog
+The documents in `docs/` are written in French.
 
-### 1.0.0 (fork of ACNH-Save-Editor 1.4.1)
-- New panel interface (Pockets, Favorites, Catalog, Bells & Miles, Loadouts, System) navigated with L/R, with action menus, steppers, dialogs and toasts.
-- Prepare-then-apply model: Review screen (before → after), Apply in one write, Discard without writing, confirmation when quitting with pending changes.
-- "Item in hand": take an item from Favorites, Catalog, a slot (pipette) or a typed hex ID. **Y** places it in the next empty slot. *Fill empty slots* fills them all.
-- Placing never overwrites an occupied slot, and writes a clean 8-byte record. Clearing writes the standard empty record.
-- Favorites managed in the app (`user_favorites.txt` overlay over the 22 built-ins, atomic rewrite, corrupted lines ignored, 64 max). Unresolved built-ins are hidden instead of showing ID FFFE.
-- `1/slot` items: badge, no quantity prompt, neutral value 0 written; `nonstackable.txt` rules; odd quantities already in the save are flagged, never changed.
-- Restore and Save Doctor moved to the System panel: hold-to-confirm, blocked while changes are pending; backup validated before restoring; start-of-session backup; read-only mode for unknown save sizes.
-- System > Info diagnostics (read-only): save layout, matching region hashes, backups present, favorites and 1/slot counts.
-- ZL / ZR no longer trigger anything. Missing `font.ttf` now shows a clear message instead of a blank screen.
-- Fixed upstream issues: crash risk with an empty favorites list (modulo by zero); a truncated loadout file no longer overwrites part of the pockets.
+## Where it comes from
 
-## Upstream roadmap
-The upstream project's history and plans are in [ROADMAP.md](ROADMAP.md) (kept as-is from ACNH-Save-Editor).
+Power Pockets starts from [ACNH-Save-Editor](https://github.com/cbreezy210/ACNH-Save-Editor) v1.4.1 (commit `731c228`) by cbreezy210, a native Switch save editor for Animal Crossing. Everything that reads, decrypts, encrypts and writes the save is upstream code. A script checks on every push that it is unchanged.
 
-## Credits
-* **cbreezy210**, author of [ACNH-Save-Editor](https://github.com/cbreezy210/ACNH-Save-Editor): the save engine and everything this fork builds on.
-* **kwsch and the NHSE project**: ACNH save-structure research — https://github.com/kwsch/NHSE
-* **devkitPro and libnx communities**: Switch homebrew tooling — https://devkitpro.org
-* **SDL2, SDL_ttf and stb_image authors**; **Varela Round** font (SIL OFL 1.1).
-* **micaturtle** and the ACNH homebrew community, for testing and feedback on the upstream project.
+What changed is everything you see and touch:
 
-## License
-MIT, like upstream. See [LICENSE](LICENSE).
+| ACNH-Save-Editor | ACNH Power Pockets |
+|---|---|
+| **A** saves to the console immediately | Changes are prepared, reviewed, then applied together |
+| One slot per save | Any number of slots per Apply, **Y** fills the next empty slot |
+| Favorites compiled into the app | Favorites editable in the app, stored on the SD card |
+| Quantity asked for every item | `1/slot` items flagged, no quantity asked |
+| **ZL** restores in one press, **ZR ZR** runs the Doctor | Both in the System panel, hold-to-confirm, blocked with pending changes |
+| One rolling backup | Rolling backup plus a start-of-session backup, both validated before restoring |
+
+Upstream's own history and plans: [ROADMAP.md](ROADMAP.md) (kept unchanged).
+
+## Contributing
+
+The most useful contribution right now is a **first-use test report**. Open an issue with your game version, your firmware/Atmosphère version, how many tickets you got, and what System › Info showed.
+
+Pull requests are welcome for the interface, tests and docs. Changes to the save engine (`source/main.cpp` engine blocks) need a strong case and a way to test them. `tools/check_engine_untouched.py` fails on purpose when the engine changes.
+
+## License and credits
+
+MIT. See [LICENSE](LICENSE). Copyright cbreezy210 (upstream) and the Power Pockets contributors.
+
+- **cbreezy210** — [ACNH-Save-Editor](https://github.com/cbreezy210/ACNH-Save-Editor), the save engine this project runs on.
+- **kwsch and [NHSE](https://github.com/kwsch/NHSE)** — the ACNH save-format research everything here relies on.
+- **[devkitPro](https://devkitpro.org) / libnx**, **SDL2**, **SDL_ttf**, **stb_image**.
+- **Varela Round** font (SIL Open Font License 1.1).
