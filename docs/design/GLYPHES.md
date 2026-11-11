@@ -4,7 +4,7 @@
 >
 > Livrables : [`tools/make_item_glyphs.py`](../../tools/make_item_glyphs.py) (dessin, mesure de couverture, aperçu), [`assets/item_glyphs.png`](../../assets/item_glyphs.png) (planche), [`assets/item_glyphs.txt`](../../assets/item_glyphs.txt) (table des glyphes, couleurs, règles), [`mockups/12-glyphs.html`](mockups/12-glyphs.html) (contrôle ×4 sur les deux fonds, teintes, grille des poches et Catalog avec glyphes).
 >
-> L'intégration dans `source/` reste à faire (§6).
+> Intégré dans l'app le 2026-11-11 (`pp::GlyphMap` dans `source/pp_model.*`, dessin dans `source/pp_ui.cpp`), en 24 px partout. `tests/host/run.sh` vérifie que l'app et cet outil donnent le même glyphe et la même couleur pour chaque objet.
 
 ## Sommaire
 1. [En bref](#1-en-bref)

@@ -30,6 +30,7 @@ SDL_Texture* SDL_CreateTexture(SDL_Renderer* r, Uint32 fmt, int access, int w, i
 SDL_Texture* SDL_CreateTextureFromSurface(SDL_Renderer* r, SDL_Surface* s);
 int SDL_UpdateTexture(SDL_Texture* t, const SDL_Rect* rect, const void* px, int pitch);
 int SDL_SetTextureBlendMode(SDL_Texture* t, SDL_BlendMode m);
+int SDL_SetTextureColorMod(SDL_Texture* t, Uint8 r, Uint8 g, Uint8 b);
 int SDL_QueryTexture(SDL_Texture* t, Uint32* fmt, int* access, int* w, int* h);
 void SDL_DestroyTexture(SDL_Texture* t);
 void SDL_FreeSurface(SDL_Surface* s);

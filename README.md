@@ -37,7 +37,8 @@ It is a fork of [ACNH-Save-Editor](https://github.com/cbreezy210/ACNH-Save-Edito
 - **Ten slots in ten presses.** Pick an item once (favorite, search, or an item already in your pockets). Each press of **Y** drops it in the next empty slot.
 - **Nothing is written until you say so.** Every edit stays in memory. The **Review** screen lists each change as *before » after*. **Apply** writes everything in one go, **Discard** throws it all away.
 - **Your items are never overwritten by accident.** Placing only targets empty slots. Replacing an item takes an explicit *Clear slot* first.
-- **Favorites you manage yourself.** Star or unstar any item from the app. Your list lives in `user_favorites.txt` on the SD card, on top of 22 built-in favorites.
+- **Favorites you manage yourself.** Star or unstar any item from the app. Your list lives in `user_favorites.txt` on the SD card and is shown first, above the 22 built-in favorites.
+- **A picture for every item.** 98 small original pictures, one per kind of item (tools, fruit, flowers, furniture, clothes…), tinted with the item's color when its name says it. Items the rules don't know show a "?". Purely cosmetic and optional: you can edit the rules in `item_glyphs.txt`.
 - **Honest quantities.** Tools and other items that never stack carry a `1/slot` badge. The app doesn't ask for a quantity it can't deliver. You can extend the list in `nonstackable.txt`.
 - **Dangerous actions are hard to trigger.** Restoring a backup and the Save Doctor write to the console immediately. They live in the System panel, in red, need **A** held for 1.5 seconds, and are blocked while you have unapplied changes.
 
@@ -45,6 +46,7 @@ It is a fork of [ACNH-Save-Editor](https://github.com/cbreezy210/ACNH-Save-Edito
 |---|---|
 | ![Action menu](docs/screenshots/slot-menu.png) | ![Review screen](docs/screenshots/review.png) |
 | ![Catalog search](docs/screenshots/catalog.png) | ![Hold-to-confirm dialog](docs/screenshots/danger-dialog.png) |
+| ![Favorites in two groups](docs/screenshots/favorites.png) | ![System panel](docs/screenshots/system.png) |
 
 ## First-use test
 
@@ -62,7 +64,7 @@ Do this once, with a save you can afford to lose. It answers two questions nobod
 
 Requirements: a Switch running Atmosphère, and Animal Crossing: New Horizons **3.0.x** (other save versions open read-only).
 
-1. Copy the `switch/acnh_editor/` folder to the root of the SD card. It contains `acnh_editor.nro`, `font.ttf`, `items.txt`, `icon.png`, `ui_icons.png` and `nonstackable.txt`. Builds come from the [Actions tab](../../actions) (artifact `acnh-power-pockets`) until releases are published.
+1. Copy the `switch/acnh_editor/` folder to the root of the SD card. It contains `acnh_editor.nro`, `font.ttf`, `items.txt`, `icon.png`, `ui_icons.png`, `item_glyphs.png`, `item_glyphs.txt` and `nonstackable.txt`. Builds come from the [Actions tab](../../actions) (artifact `acnh-power-pockets`) until releases are published.
 2. Fully close the game: HOME › highlight Animal Crossing › **X** › Close. A suspended game overwrites your edits on its next autosave.
 3. Hold **R** while starting Animal Crossing to open the Homebrew Menu, then launch **ACNH Power Pockets**. Launching from the Album is refused: it doesn't give the app enough access.
 
@@ -88,7 +90,7 @@ The folder name is `acnh_editor`, the same as upstream ACNH-Save-Editor. Power P
 | Panel | For |
 |---|---|
 | **Pockets** | The 20 slots. **Y** places the item in hand in the next empty slot (or picks up the item under the cursor when your hand is empty). Menu: *Fill empty slots*, *Take in hand*, *Quantity…*, *Held quantity…*, *Enter item ID (hex)…*, *Add/Remove favorite*, *Revert to original*, *Clear slot*. |
-| **Favorites** | Your favorites, A to Z. **Y** takes one and jumps back to Pockets. |
+| **Favorites** | Two groups, each A to Z: **YOURS** (added by you), then **BUILT-IN**. **Y** takes one and jumps back to Pockets. A built-in favorite can be hidden, and comes back with *Restore default favorites*. |
 | **Catalog** | Search all ~15,000 items by name or 4-digit hex ID. |
 | **Bells & Miles** | Wallet, Bank, Nook Miles, House loan. Step with the D-pad (±1,000 / ±100,000, ×10 after holding 2 s) or type a value. |
 | **Loadouts** | Five saved pocket setups on the SD card. Loading one counts as a pending change. |
@@ -130,6 +132,7 @@ All in `sdmc:/switch/acnh_editor/`.
 |---|---|---|
 | `user_favorites.txt` | the app | Your favorites. Plain text, safe to edit. `.bak` keeps your previous version. |
 | `nonstackable.txt` | you | Extra `1/slot` rules (optional) |
+| `item_glyphs.png`, `item_glyphs.txt` | you (install) | Item pictures and the rules that pick one for each item (optional: without them the app shows names only) |
 | `backup_personal.dat`, `backup_main.dat` | the app | Save as it was before the last Apply |
 | `session_personal.dat`, `session_main.dat` | the app | Pre-edit backup: save as the game last wrote it, before this app's first write |
 | `session_mark.txt` | the app | Tells the app whether the pre-edit backup still matches the console (don't edit) |
@@ -181,7 +184,7 @@ sh tests/host/run.sh                                     # unit tests (incl. par
 sh tests/host/engine_bench.sh                            # runs the real main.cpp on a fake console: byte-exact checks of Apply / restore / Doctor, with injected failures
 sh tests/host/ui_shots.sh                                # renders the real UI with a fake engine, checks flows and failures, saves screenshots
 ```
-`ui_shots.sh` needs SDL2, SDL2_ttf (`brew install sdl2 sdl2_ttf`) and Python Pillow.
+`ui_shots.sh` needs SDL2, SDL2_ttf (`brew install sdl2 sdl2_ttf`) and Python Pillow. With Pillow installed, `run.sh` also checks that the app picks the same picture and color as `tools/make_item_glyphs.py` for every item.
 
 | Path | Contents |
 |---|---|

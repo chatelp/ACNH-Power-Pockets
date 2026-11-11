@@ -86,6 +86,7 @@ struct DialogButton {
 struct ReviewRow {
     int kind = 0;           // 0 header, 1 slot, 2 value
     int slot = 0, idx = 0;
+    uint16_t beforeId = ID_EMPTY, afterId = ID_EMPTY;
     std::string target, before, after;
 };
 struct Modal {
@@ -122,6 +123,7 @@ struct Op {
     SDL_Texture* t;
     SDL_Rect src;
     bool hasSrc;
+    bool mod;               // TEX only: multiply the texture by `c` (tinted glyph mask)
 };
 
 struct LoadoutInfo { bool exists = false, bad = false; int count = 0; uint8_t data[POCKETS_BYTES]; };
@@ -131,6 +133,9 @@ struct Ui::Impl {
     SDL_Renderer* ren = nullptr;
     TTF_Font *fDisplay = nullptr, *fTitle = nullptr, *fBody = nullptr, *fSmall = nullptr, *fMicro = nullptr;
     SDL_Texture *appIcon = nullptr, *icons = nullptr, *bgTex = nullptr;
+    SDL_Texture *glyphTex = nullptr;      // item_glyphs.png: 24x24 cells, rows = full color / tint mask / outlines
+    int glyphCols = 0;
+    bool glyphTintRows = false;
     std::string sdDir;
     EngineHooks* e = nullptr;
 
@@ -215,7 +220,7 @@ struct Ui::Impl {
         owned.clear(); ops.clear();
         gaugeOn = false;
     }
-    void fill(SDL_Rect r, SDL_Color c) { ops.push_back({ Op::RECT, r, c, nullptr, { 0, 0, 0, 0 }, false }); }
+    void fill(SDL_Rect r, SDL_Color c) { ops.push_back({ Op::RECT, r, c, nullptr, { 0, 0, 0, 0 }, false, false }); }
     // Chamfered corners: 2 rects (k <= 4) or a 3-step stair (k > 4). CHARTE 6.1.
     void fillRound(SDL_Rect a, int k, SDL_Color c) {
         if (k <= 0) { fill(a, c); return; }
@@ -260,7 +265,7 @@ struct Ui::Impl {
         SDL_FreeSurface(surf);
         if (!t) return 0;
         owned.push_back(t);
-        ops.push_back({ Op::TEX, { x, y, w, h }, c, t, { 0, 0, 0, 0 }, false });
+        ops.push_back({ Op::TEX, { x, y, w, h }, c, t, { 0, 0, 0, 0 }, false, false });
         return w;
     }
     int textR(TTF_Font* f, const std::string& s, SDL_Color c, int right, int y) {
@@ -275,9 +280,26 @@ struct Ui::Impl {
     int textMid(TTF_Font* f, const std::string& s, SDL_Color c, int x, SDL_Rect row) {
         return text(f, s, c, x, row.y + (row.h - fontH(f)) / 2);
     }
+    // Item pictures are optional: without item_glyphs.png / item_glyphs.txt the layout is
+    // the plain one (names start where the picture would be).
+    bool glyphsOn() const { return glyphTex && glyphCols > 0 && e && e->glyphs && e->glyphs->loaded(); }
+    int nameShift() const { return glyphsOn() ? 28 : 0; }
+    void glyph(uint16_t id, int x, int y) {
+        if (!glyphsOn() || id == ID_EMPTY) return;
+        int g = e->glyphs->glyphOf(id);
+        if (g < 0 || g >= glyphCols) g = 0;
+        uint32_t rgb = 0;
+        if (glyphTintRows && e->glyphs->colorOf(id, rgb)) {
+            SDL_Color tint = { (Uint8)(rgb >> 16), (Uint8)(rgb >> 8), (Uint8)rgb, 255 };
+            ops.push_back({ Op::TEX, { x, y, 24, 24 }, tint, glyphTex, { g * 24, 24, 24, 24 }, true, true });
+            ops.push_back({ Op::TEX, { x, y, 24, 24 }, C::panel, glyphTex, { g * 24, 48, 24, 24 }, true, false });
+        } else {
+            ops.push_back({ Op::TEX, { x, y, 24, 24 }, C::panel, glyphTex, { g * 24, 0, 24, 24 }, true, false });
+        }
+    }
     void icon(int idx, int x, int y, int size = 20) {
         if (!icons) return;
-        ops.push_back({ Op::TEX, { x, y, size, size }, C::panel, icons, { idx * 24, 0, 24, 24 }, true });
+        ops.push_back({ Op::TEX, { x, y, size, size }, C::panel, icons, { idx * 24, 0, 24, 24 }, true, false });
     }
     // Badge pill (CHARTE 6.6). Returns its width.
     int badge(const std::string& s, SDL_Color bg, SDL_Color ink, int x, int y) {
@@ -326,7 +348,7 @@ struct Ui::Impl {
 
     void drawHeader() {
         fill({ 32, 24, 1216, 64 }, C::wood);
-        if (appIcon) ops.push_back({ Op::TEX, { 48, 32, 48, 48 }, C::panel, appIcon, { 0, 0, 0, 0 }, false });
+        if (appIcon) ops.push_back({ Op::TEX, { 48, 32, 48, 48 }, C::panel, appIcon, { 0, 0, 0, 0 }, false, false });
         text(fDisplay, S::APP_TITLE, C::selectInk, 112, 24 + (64 - fontH(fDisplay)) / 2);
         if (!ready()) return;
         int n = pending();
@@ -346,7 +368,8 @@ struct Ui::Impl {
         }
         // Holding
         std::string h = hand.valid ? fmt(S::HOLDING_FMT, fit(fSmall, handText(), 460).c_str()) : std::string(S::HOLDING_NONE);
-        textR(fSmall, h, hand.valid ? C::selectInk : C::woodInk, cr.x - 24, 24 + (64 - fontH(fSmall)) / 2);
+        int hw = textR(fSmall, h, hand.valid ? C::selectInk : C::woodInk, cr.x - 24, 24 + (64 - fontH(fSmall)) / 2);
+        if (hand.valid) glyph(hand.id, cr.x - 24 - hw - 32, 24 + 20);
     }
 
     bool panelHasPending(int p) const {
@@ -448,8 +471,9 @@ struct Ui::Impl {
             }
             if (single(rec.id)) { int bw = badgeWidth(S::BADGE_SINGLE); badge(S::BADGE_SINGLE, C::singleBg, C::singleInk, rx - bw, r.y + 6); rx -= bw + 8; }
             if (e->favorites && e->favorites->isFav(rec.id)) { rx -= 20; favMark(rx, r.y + 8); rx -= 8; }
-            int maxW = rx - (r.x + 56) - 8;
-            textMid(fBody, fit(fBody, itemName(rec.id), maxW), ink, r.x + 56, r);
+            glyph(rec.id, r.x + 52, r.y + 6);
+            const int nx = r.x + 56 + nameShift();
+            textMid(fBody, fit(fBody, itemName(rec.id), rx - nx - 8), ink, nx, r);
         }
     }
     std::string pocketsDetail() {
@@ -557,7 +581,7 @@ struct Ui::Impl {
         };
         m.entries.push_back(id);
         bool fav = occ && e->favorites && e->favorites->isFav(r.id);
-        MenuEntry fv; fv.label = fav ? S::M_REMOVE_FAV : S::M_ADD_FAV;
+        MenuEntry fv; fv.label = fav ? favRemoveLabel(r.id) : S::M_ADD_FAV;
         fv.enabled = occ && itemsLoaded(); fv.reason = !occ ? S::R_SLOT_EMPTY : S::R_NO_ITEMS;
         fv.run = [this, r, fav]() { if (fav) confirmUnfav(r.id); else addFav(r.id); };
         m.entries.push_back(fv);
@@ -605,6 +629,7 @@ struct Ui::Impl {
     }
     void confirmUnfav(uint16_t id) {
         Modal m; m.kind = Modal::DIALOG; m.title = fmt(S::D_UNFAV_TITLE_FMT, fit(fTitle, itemName(id), 300).c_str());
+        if (!e->favorites->isUserAdded(id)) m.body.push_back(S::D_HIDE_BODY);
         DialogButton no; no.label = S::B_NO;
         DialogButton yes; yes.label = S::B_REMOVE; yes.destructive = true;
         yes.run = [this, id]() {
@@ -613,6 +638,7 @@ struct Ui::Impl {
                 setToast(T_OK, S::T_FAV_REMOVED);
                 int n = (int)e->favorites->list().size();
                 if (focus[P_FAVS] >= n) focus[P_FAVS] = n > 0 ? n - 1 : 0;
+                dirty = true;
             } else if (r == Favorites::IO_ERROR) setToast(T_ERR, S::T_FAV_IO);
             else if (r == Favorites::READ_ONLY) setToast(T_WARN, S::T_FAV_RO);
         };
@@ -631,7 +657,7 @@ struct Ui::Impl {
         push(m);
     }
     // One row of an item list (favorites / catalog): star column, name, badges, ID.
-    void itemRow(int i, uint16_t id, bool foc, bool userAdded) {
+    void itemRow(int i, uint16_t id, bool foc) {
         SDL_Rect r = listRow(i, foc, i % 2 == 1, false);
         SDL_Color ink = foc ? C::selectInk : C::textPrimary;
         bool fav = e->favorites && e->favorites->isFav(id);
@@ -639,25 +665,70 @@ struct Ui::Impl {
         int rx = r.x + r.w - 20;
         rx -= textR(fSmall, fmt("0x%04X", (unsigned)id), foc ? C::selectInk : C::textSecond, rx, r.y + (ROW_H - fontH(fSmall)) / 2) + 16;
         if (single(id)) { int bw = badgeWidth(S::BADGE_SINGLE); badge(S::BADGE_SINGLE, C::singleBg, C::singleInk, rx - bw, r.y + 8); rx -= bw + 8; }
-        if (userAdded) { int bw = badgeWidth(S::BADGE_SD); badge(S::BADGE_SD, C::sunken, C::textPrimary, rx - bw, r.y + 8); rx -= bw + 8; }
-        int x = r.x + 56;
+        glyph(id, r.x + 52, r.y + 8);
+        int x = r.x + 56 + nameShift();
         textMid(fBody, fit(fBody, itemName(id), rx - x - 8), ink, x, r);
     }
     void emptyState(const std::string& a, const std::string& b) {
         textC(fBody, a, C::textSecond, { 56, 300, 1168, 40 });
         textC(fSmall, b, C::textSecond, { 56, 344, 1168, 30 });
     }
+    // Favorites are shown in two groups, each A-Z: the user's own first, then the built-in
+    // ones (CHARTE 6.15). The focus index runs over this order. A group header takes one
+    // row, is not focusable, and is repeated with "(cont.)" when a page starts mid-group.
+    std::vector<Fav> favOrder() const {
+        std::vector<Fav> out;
+        if (!e || !e->favorites) return out;
+        const std::vector<Fav>& L = e->favorites->list();           // already A-Z
+        for (size_t i = 0; i < L.size(); i++) if (!L[i].builtin) out.push_back(L[i]);
+        for (size_t i = 0; i < L.size(); i++) if (L[i].builtin) out.push_back(L[i]);
+        return out;
+    }
+    struct FavRow { int item; bool cont; };                         // item < 0: header of the next item's group
+    std::vector<std::vector<FavRow> > favPages(const std::vector<Fav>& L) const {
+        std::vector<std::vector<FavRow> > pages(1);
+        for (int i = 0; i < (int)L.size(); i++) {
+            const bool groupStart = i == 0 || L[i].builtin != L[i - 1].builtin;
+            // A header and its first item stay together: both need room on the page.
+            if ((int)pages.back().size() + (groupStart ? 2 : 1) > ROWS) pages.push_back(std::vector<FavRow>());
+            if (groupStart || pages.back().empty()) pages.back().push_back({ -1, !groupStart });
+            pages.back().push_back({ i, false });
+        }
+        return pages;
+    }
+    // Page and row of a favorite in that layout.
+    static bool favLocate(const std::vector<std::vector<FavRow> >& pages, int item, int& page, int& row) {
+        for (size_t p = 0; p < pages.size(); p++)
+            for (size_t r = 0; r < pages[p].size(); r++)
+                if (pages[p][r].item == item) { page = (int)p; row = (int)r; return true; }
+        page = row = 0;
+        return false;
+    }
+    const char* favRemoveLabel(uint16_t id) const {
+        return (e->favorites && e->favorites->isUserAdded(id)) ? S::M_REMOVE_FAV : S::M_HIDE_FAV;
+    }
     void drawFavorites() {
-        const std::vector<Fav> none;
-        const std::vector<Fav>& L = e->favorites ? e->favorites->list() : none;
+        const std::vector<Fav> L = favOrder();
+        int yours = 0;
+        for (size_t i = 0; i < L.size(); i++) if (!L[i].builtin) yours++;
         if (!degradedBanner())
-            contextBanner(fmt("%d favorite%s \xC2\xB7 A\xE2\x80\x93Z", (int)L.size(), plural((int)L.size())), "SD = added by you");
+            contextBanner(fmt("%d favorite%s \xC2\xB7 A\xE2\x80\x93Z", (int)L.size(), plural((int)L.size())), "Add your own from the Catalog");
         if (L.empty()) { emptyState(S::FAVS_EMPTY, itemsLoaded() ? S::FAVS_EMPTY_HINT : S::FAVS_RO_HINT); return; }
-        int f = std::min(focus[P_FAVS], (int)L.size() - 1);
-        int page = f / ROWS, pages = ((int)L.size() + ROWS - 1) / ROWS;
-        for (int i = page * ROWS; i < std::min((int)L.size(), page * ROWS + ROWS); i++)
-            itemRow(i - page * ROWS, L[i].id, i == f, !L[i].builtin);
-        pager(page, pages);
+        const int f = std::min(focus[P_FAVS], (int)L.size() - 1);
+        const std::vector<std::vector<FavRow> > pages = favPages(L);
+        int page = 0, row = 0;
+        favLocate(pages, f, page, row);
+        for (size_t r = 0; r < pages[page].size(); r++) {
+            const FavRow& fr = pages[page][r];
+            if (fr.item >= 0) { itemRow((int)r, L[fr.item].id, fr.item == f); continue; }
+            const bool builtin = L[pages[page][r + 1].item].builtin;   // a header is always followed by an item
+            const int y = LIST_Y + (int)r * ROW_PITCH;
+            fillRound({ LIST_X, y + 4, LIST_W, 32 }, 4, C::panelAlt);
+            std::string label = fmt("%s \xC2\xB7 %d", builtin ? S::FAV_GROUP_BUILTIN : S::FAV_GROUP_YOURS, builtin ? (int)L.size() - yours : yours);
+            if (fr.cont) label += S::FAV_GROUP_CONT;
+            text(fSmall, label, C::textSecond, LIST_X + 16, y + 4 + (32 - fontH(fSmall)) / 2);
+        }
+        pager(page, (int)pages.size());
     }
     void takeMenu(uint16_t id, bool fromFavs) {
         Modal m; m.kind = Modal::MENU; m.title = itemName(id) + S::DOT + fmt("0x%04X", (unsigned)id);
@@ -671,7 +742,7 @@ struct Ui::Impl {
         };
         m.entries.push_back(tq);
         bool fav = e->favorites && e->favorites->isFav(id);
-        MenuEntry fv; fv.label = fav ? S::M_REMOVE_FAV : S::M_ADD_FAV; fv.destructive = fav;
+        MenuEntry fv; fv.label = fav ? favRemoveLabel(id) : S::M_ADD_FAV; fv.destructive = fav;
         fv.enabled = itemsLoaded(); fv.reason = S::R_NO_ITEMS;
         fv.run = [this, id, fav]() { if (fav) confirmUnfav(id); else addFav(id); };
         m.entries.push_back(fv);
@@ -680,19 +751,28 @@ struct Ui::Impl {
             rs.run = [this]() { confirmResetFavs(); };
             m.entries.push_back(rs);
         }
-        m.anchor = { 56, LIST_Y + ((fromFavs ? focus[P_FAVS] : focus[P_CATALOG]) % ROWS) * ROW_PITCH, 600, ROW_H };
+        int row = focus[P_CATALOG] == 0 ? 0 : 1 + (focus[P_CATALOG] - 1) % CAT_ROWS;
+        if (fromFavs) { int page = 0; favLocate(favPages(favOrder()), focus[P_FAVS], page, row); }
+        m.anchor = { 56, LIST_Y + row * ROW_PITCH, 600, ROW_H };
         push(m);
     }
     void favsInput(uint64_t down, uint64_t nav) {
-        const std::vector<Fav>& L = e->favorites->list();
+        const std::vector<Fav> L = favOrder();
         int n = (int)L.size();
         if (n == 0) return;                                    // no modulo by zero (upstream bug)
         int& f = focus[P_FAVS];
         if (f >= n) f = n - 1;
         if (nav & HidNpadButton_AnyUp) { f = (f + n - 1) % n; dirty = true; }
         if (nav & HidNpadButton_AnyDown) { f = (f + 1) % n; dirty = true; }
-        if (nav & HidNpadButton_AnyLeft) { f = std::max(0, f - ROWS); dirty = true; }
-        if (nav & HidNpadButton_AnyRight) { f = std::min(n - 1, f + ROWS); dirty = true; }
+        if (nav & (HidNpadButton_AnyLeft | HidNpadButton_AnyRight)) {   // previous / next page
+            const std::vector<std::vector<FavRow> > pages = favPages(L);
+            int page = 0, row = 0;
+            favLocate(pages, f, page, row);
+            const int to = page + ((nav & HidNpadButton_AnyRight) ? 1 : -1);
+            if (to >= 0 && to < (int)pages.size())
+                for (size_t r = 0; r < pages[to].size(); r++) if (pages[to][r].item >= 0) { f = pages[to][r].item; break; }
+            dirty = true;
+        }
         if (down & HidNpadButton_Y) setHand(L[f].id, hand.valid ? hand.qty : 1, true);
         else if (down & HidNpadButton_A) takeMenu(L[f].id, true);
     }
@@ -717,7 +797,7 @@ struct Ui::Impl {
         int page = sel >= 0 ? sel / CAT_ROWS : 0;
         int pages = ((int)results.size() + CAT_ROWS - 1) / CAT_ROWS;
         for (int i = page * CAT_ROWS; i < std::min((int)results.size(), page * CAT_ROWS + CAT_ROWS); i++)
-            itemRow(1 + i - page * CAT_ROWS, (uint16_t)results[i], i == sel, false);
+            itemRow(1 + i - page * CAT_ROWS, (uint16_t)results[i], i == sel);
         pager(page, pages);
     }
     void runSearch() {
@@ -845,7 +925,8 @@ struct Ui::Impl {
             SlotRec r = readSlot(lo[f].data, s);
             SDL_Color c = r.id == ID_EMPTY ? C::disabledInk : C::textPrimary;
             text(fSmall, fmt("%2d", s), C::textSecond, x, y);
-            text(fSmall, fit(fSmall, slotText(lo[f].data, s), 236), c, x + 32, y);
+            glyph(r.id, x + 30, y);
+            text(fSmall, fit(fSmall, slotText(lo[f].data, s), 236 - nameShift()), c, x + 32 + nameShift(), y);
         }
     }
     void loadLoadout(int i) {
@@ -956,7 +1037,12 @@ struct Ui::Impl {
         L.push_back({ "Heal fields", info.poisonAllZero ? "already 0 (no-op)" : "non-zero (zeroed on Apply)" });
         L.push_back({ "SD backup", (info.backupPersonal >= 0 && info.backupMain >= 0) ? std::string(backupTrusted ? "present" : "present, NOT trusted") : std::string("none") });
         L.push_back({ "Pre-edit backup", (info.sessionPersonal >= 0 && info.sessionMain >= 0) ? std::string(sessionWritten ? "ready (before this app's first write)" : "from an older save state") : std::string("none") });
-        L.push_back({ "Items", fmt("%d names", (int)items().size()) });
+        std::string names = fmt("%d names", (int)items().size());
+        if (glyphsOn()) {
+            names += fmt(" \xC2\xB7 %d pictures", e->glyphs->glyphCount());
+            if (e->glyphs->ignoredLines()) names += fmt(" (%d rule%s ignored)", e->glyphs->ignoredLines(), plural(e->glyphs->ignoredLines()));
+        } else names += " \xC2\xB7 no pictures";
+        L.push_back({ "Items", names });
         int nf = e->favorites ? (int)e->favorites->list().size() : 0;
         std::string favs = fmt("%d", nf);
         if (e->favorites && e->favorites->missingBuiltins()) favs += fmt(" (%d built-in not found)", e->favorites->missingBuiltins());
@@ -1088,6 +1174,7 @@ struct Ui::Impl {
             for (int s = 1; s <= SLOT_COUNT; s++) if (slotModified(base, e->pockets, s)) {
                 ReviewRow r; r.kind = 1; r.slot = s; r.target = fmt(S::SLOT_DETAIL_FMT, s);
                 r.before = slotText(base.pockets, s); r.after = slotText(e->pockets, s);
+                r.beforeId = readSlot(base.pockets, s).id; r.afterId = readSlot(e->pockets, s).id;
                 if (r.before == r.after) r.after += " (attributes)";
                 m.rows.push_back(r);
             }
@@ -1151,9 +1238,12 @@ struct Ui::Impl {
                 fill({ rr.x, rr.y, 8, rr.h }, C::modified);
                 SDL_Color ink = foc ? C::selectInk : C::textPrimary;
                 textMid(fBody, r.target, ink, 80, rr);
-                textMid(fBody, fit(fBody, r.before, 360), foc ? C::selectInk : C::textSecond, 260, rr);
+                const int sh = r.kind == 1 ? nameShift() + (glyphsOn() ? 4 : 0) : 0;   // pocket rows: room for the picture
+                glyph(r.beforeId, 260, rr.y + 8);
+                glyph(r.afterId, 680, rr.y + 8);
+                textMid(fBody, fit(fBody, r.before, 360 - sh), foc ? C::selectInk : C::textSecond, 260 + sh, rr);
                 textMid(fBody, "\xC2\xBB", ink, 640, rr);
-                textMid(fBody, fit(fBody, r.after, 520), foc ? C::selectInk : C::modifiedInk, 680, rr);
+                textMid(fBody, fit(fBody, r.after, 520 - sh), foc ? C::selectInk : C::modifiedInk, 680 + sh, rr);
             }
             if ((int)m.rows.size() > VIS) textR(fSmall, fmt("%d-%d of %d", m.top + 1, std::min((int)m.rows.size(), m.top + VIS), (int)m.rows.size()), C::textSecond, 1220, 466);
             text(fSmall, S::REVIEW_NOTE1, C::textPrimary, 56, 466);
@@ -1421,7 +1511,7 @@ struct Ui::Impl {
         switch (panel) {
             case P_POCKETS: d = pocketsDetail(); break;
             case P_FAVS: {
-                const std::vector<Fav>& L = e->favorites->list();
+                const std::vector<Fav> L = favOrder();
                 if (!L.empty()) { const Fav& f = L[std::min(focus[P_FAVS], (int)L.size() - 1)];
                     d = itemName(f.id) + S::DOT + fmt("0x%04X", (unsigned)f.id) + S::DOT + (f.builtin ? "built-in favorite" : "added by you (user_favorites.txt)"); }
                 break;
@@ -1631,6 +1721,10 @@ struct Ui::Impl {
                 SDL_SetRenderDrawBlendMode(ren, o.c.a < 255 ? SDL_BLENDMODE_BLEND : SDL_BLENDMODE_NONE);
                 SDL_SetRenderDrawColor(ren, o.c.r, o.c.g, o.c.b, o.c.a);
                 SDL_RenderFillRect(ren, &o.r);
+            } else if (o.mod) {
+                SDL_SetTextureColorMod(o.t, o.c.r, o.c.g, o.c.b);
+                SDL_RenderCopy(ren, o.t, o.hasSrc ? &o.src : nullptr, &o.r);
+                SDL_SetTextureColorMod(o.t, 255, 255, 255);
             } else {
                 SDL_RenderCopy(ren, o.t, o.hasSrc ? &o.src : nullptr, &o.r);
             }
@@ -1650,10 +1744,12 @@ struct Ui::Impl {
 };
 
 // ================================== public =================================
-static SDL_Texture* loadPng(SDL_Renderer* ren, const std::string& path) {
+static SDL_Texture* loadPng(SDL_Renderer* ren, const std::string& path, int* outW = nullptr, int* outH = nullptr) {
     int w = 0, h = 0, c = 0;
     unsigned char* px = stbi_load(path.c_str(), &w, &h, &c, 4);
     if (!px) return nullptr;
+    if (outW) *outW = w;
+    if (outH) *outH = h;
     SDL_Texture* t = SDL_CreateTexture(ren, SDL_PIXELFORMAT_RGBA32, SDL_TEXTUREACCESS_STATIC, w, h);
     if (t) { SDL_UpdateTexture(t, nullptr, px, w * 4); SDL_SetTextureBlendMode(t, SDL_BLENDMODE_BLEND); }
     stbi_image_free(px);
@@ -1672,6 +1768,10 @@ bool Ui::init(SDL_Renderer* ren, const std::string& sdDir) {
     d_->fMicro   = TTF_OpenFont(font.c_str(), 16);
     d_->appIcon  = loadPng(ren, sdDir + "icon.png");
     d_->icons    = loadPng(ren, sdDir + "ui_icons.png");      // optional, text fallbacks otherwise
+    int gw = 0, gh = 0;
+    d_->glyphTex = loadPng(ren, sdDir + "item_glyphs.png", &gw, &gh);   // optional item pictures
+    d_->glyphCols = d_->glyphTex ? gw / 24 : 0;
+    d_->glyphTintRows = gh >= 72;
     return d_->fBody != nullptr;
 }
 
@@ -1682,7 +1782,7 @@ void Ui::splash() {
     d.fill({ 0, 0, 1280, 720 }, C::bgLeaf);
     d.fill({ 32, 24, 1216, 672 }, C::panel);
     d.fill({ 32, 24, 1216, 64 }, C::wood);
-    if (d.appIcon) d.ops.push_back({ Op::TEX, { 48, 32, 48, 48 }, C::panel, d.appIcon, { 0, 0, 0, 0 }, false });
+    if (d.appIcon) d.ops.push_back({ Op::TEX, { 48, 32, 48, 48 }, C::panel, d.appIcon, { 0, 0, 0, 0 }, false, false });
     d.text(d.fDisplay, S::APP_TITLE, C::selectInk, 112, 24 + (64 - d.fontH(d.fDisplay)) / 2);
     d.textC(d.fTitle, S::SPLASH_TITLE, C::textPrimary, { 56, 260, 1168, 40 });
     d.textC(d.fSmall, S::SPLASH_HINT1, C::textSecond, { 56, 320, 1168, 28 });
@@ -1734,6 +1834,7 @@ void Ui::shutdown() {
     d_->clearOps();
     if (d_->appIcon) SDL_DestroyTexture(d_->appIcon);
     if (d_->icons) SDL_DestroyTexture(d_->icons);
+    if (d_->glyphTex) SDL_DestroyTexture(d_->glyphTex);
     TTF_Font* fonts[5] = { d_->fDisplay, d_->fTitle, d_->fBody, d_->fSmall, d_->fMicro };
     for (int i = 0; i < 5; i++) if (fonts[i]) TTF_CloseFont(fonts[i]);
     delete d_;

@@ -152,6 +152,32 @@ private:
     bool fileFound_ = false;
 };
 
+// ------------------------------- item glyphs -------------------------------
+// Which small picture (a cell of item_glyphs.png) goes with each item, and in
+// which color. Everything comes from item_glyphs.txt on the SD card (format and
+// rule syntax are documented at the top of that file and in
+// docs/design/GLYPHES.md); tools/make_item_glyphs.py is the reference
+// implementation and tests/host/run.sh checks both agree on every item.
+// Purely cosmetic: a missing or broken file only means "no pictures".
+class GlyphMap {
+public:
+    void build(const std::vector<Item>& items, const char* path);
+    bool loaded() const      { return loaded_; }      // file found, with a glyph table
+    int  glyphOf(uint16_t id) const;                  // cell index, 0 = unknown ("?")
+    // True when the item's glyph can be tinted AND a color word was found in its name.
+    bool colorOf(uint16_t id, uint32_t& rgb) const;
+    int  glyphCount() const  { return glyphCount_; }  // highest index + 1
+    int  ruleCount() const   { return rules_; }
+    int  ignoredLines() const { return ignored_; }
+    int  recognized() const  { return recognized_; }  // named items with a glyph other than "?"
+    int  colored() const     { return colored_; }
+private:
+    std::vector<uint8_t>  glyph_;
+    std::vector<uint32_t> color_;                     // 0 = none, else 0x01RRGGBB
+    bool loaded_ = false;
+    int  glyphCount_ = 0, rules_ = 0, ignored_ = 0, recognized_ = 0, colored_ = 0;
+};
+
 // -------------------------------- favorites --------------------------------
 // Built-in favorites (FAV_NAMES in main.cpp, resolved by name like upstream)
 // plus a user overlay file on the SD card. The overlay is plain text:

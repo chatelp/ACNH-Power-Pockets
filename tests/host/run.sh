@@ -13,6 +13,10 @@ FLAGS="-std=gnu++17 -fno-exceptions -fno-rtti -Wall -Wextra -Wno-unused-paramete
 echo "== unit tests (pp_model) =="
 $CXX $FLAGS -O1 -g -fsanitize=address,undefined \
     "$ROOT/source/pp_model.cpp" "$ROOT/tests/host/test_model.cpp" -o "$OUT/test_model"
+# Reference glyph mapping from the design tool (needs Python Pillow); skipped without it.
+if python3 -c "import PIL" 2>/dev/null && python3 "$ROOT/tools/make_item_glyphs.py" --dump "$OUT/glyph_dump.txt"; then
+    export PP_ROOT="$ROOT" PP_GLYPH_DUMP="$OUT/glyph_dump.txt"
+fi
 PP_TMP="$OUT" "$OUT/test_model"
 
 echo

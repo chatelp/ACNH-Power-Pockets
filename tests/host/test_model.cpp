@@ -368,6 +368,94 @@ static void testFuzzParsers() {
     CHECK(g.ignoredLines() == 0 && g.list().size() == f.list().size() && g.isFav(2) && g.isFav(3) && !g.isFav(4));
 }
 
+static void testGlyphRules() {
+    printf("item glyph rules\n");
+    std::vector<Item> items;
+    const char* names[] = { "", "golden axe", "frilly dress (Pink)", "cook cap with logo (Light blue)", "white-tulip stems",
+                            "K.K. Bossa", "sea bass", "pond smelt", "odd thing", "tank top (No Variations)",
+                            "straw hat (Blue & red)", "golden dress", "mini-dress (Navy blue)", "undressed doll" };
+    for (uint16_t i = 0; i < sizeof(names) / sizeof(names[0]); i++) items.push_back({ i, names[i] });
+    writeText(path("glyphs.txt"),
+        "# comment\n"
+        "glyph 0 unknown\nglyph 1 axe\nglyph 2 dress tint\nglyph 3 cap tint\nglyph 4 flower tint\nglyph 5 music\n"
+        "glyph 6 fish\nglyph 7 shirt tint\nglyph 8 hat tint\nglyph 999 toobig\n"
+        "color 0000FF blue\ncolor 88CCFF light blue\ncolor FF99AA pink\ncolor FFFFFF white\ncolor FF0000 red\n"
+        "color 223366 navy blue\ncolor FFD700 gold\n"
+        "unknown *\n"
+        "axe ~axe\n"
+        "dress $dress\n"
+        "cap $cap\n"
+        "flower $stems\n"
+        "music ~K.K.\n"
+        "fish 0x0006-0x0007\n"
+        "shirt tank top (no variations)\n"
+        "hat $hat\n"
+        "nosuchglyph ~thing\n"
+        "lonely\n"
+        "axe ~\n"
+        "unknown 0x0007\n");                                  // later rule wins over the range
+    GlyphMap g;
+    g.build(items, path("glyphs.txt").c_str());
+    uint32_t c = 0;
+    CHECK(g.loaded() && g.glyphCount() == 9);
+    CHECK(g.glyphOf(0) == 0 && !g.colorOf(0, c));            // unnamed id
+    CHECK(g.glyphOf(1) == 1 && !g.colorOf(1, c));            // "golden" is not the word "gold"; axe not tintable
+    CHECK(g.glyphOf(2) == 2 && g.colorOf(2, c) && c == 0xFF99AA);
+    CHECK(g.glyphOf(3) == 3 && g.colorOf(3, c) && c == 0x88CCFF);   // base name drops " with ...", longest color wins
+    CHECK(g.glyphOf(4) == 4 && g.colorOf(4, c) && c == 0xFFFFFF);   // color read in the base name
+    CHECK(g.glyphOf(5) == 5);
+    CHECK(g.glyphOf(6) == 6 && g.glyphOf(7) == 0);           // id range, then a later single-id rule
+    CHECK(g.glyphOf(8) == 0);                                // rule with an unknown glyph name is ignored
+    CHECK(g.glyphOf(9) == 7 && !g.colorOf(9, c));            // exact name, no color word
+    CHECK(g.glyphOf(10) == 8 && g.colorOf(10, c) && c == 0x0000FF); // first color of the variant
+    CHECK(g.glyphOf(11) == 2 && !g.colorOf(11, c));
+    CHECK(g.glyphOf(12) == 2 && g.colorOf(12, c) && c == 0x223366); // "$dress" after a hyphen
+    CHECK(g.glyphOf(13) == 0);                               // "undressed": not a word ending
+    CHECK(g.ignoredLines() == 4);                            // glyph 999, nosuchglyph, "lonely", "axe ~"
+    CHECK(g.glyphOf(0xFFFE) == 0 && !g.colorOf(0xFFFE, c));
+    GlyphMap none; none.build(items, path("missing_glyphs.txt").c_str());
+    CHECK(!none.loaded() && none.glyphOf(1) == 0);
+    writeText(path("glyphs_bad.txt"), "\x01\x02 garbage\nshirt $tee\n");
+    GlyphMap bad; bad.build(items, path("glyphs_bad.txt").c_str());
+    CHECK(!bad.loaded() && bad.glyphOf(2) == 0);             // no glyph table: no pictures
+}
+
+// Cross-check with the reference implementation (tools/make_item_glyphs.py --dump) on
+// the real items.txt and item_glyphs.txt. run.sh sets PP_ROOT and PP_GLYPH_DUMP.
+static void testGlyphsMatchTool() {
+    const char* root = getenv("PP_ROOT"); const char* dumpPath = getenv("PP_GLYPH_DUMP");
+    if (!root || !dumpPath) { printf("item glyphs vs tool: skipped (no reference dump)\n"); return; }
+    printf("item glyphs vs tools/make_item_glyphs.py\n");
+    std::vector<Item> items;
+    FILE* it = fopen((std::string(root) + "/assets/items.txt").c_str(), "rb");
+    char line[256]; uint16_t id = 0;
+    while (it && fgets(line, sizeof line, it)) {             // same loader as main.cpp
+        size_t n = strlen(line);
+        while (n && (line[n-1] == '\n' || line[n-1] == '\r')) line[--n] = 0;
+        items.push_back({ id++, line });
+    }
+    if (it) fclose(it);
+    GlyphMap g;
+    g.build(items, (std::string(root) + "/assets/item_glyphs.txt").c_str());
+    CHECK(g.loaded() && g.ignoredLines() == 0 && g.glyphCount() == 98);
+    FILE* d = fopen(dumpPath, "rb");
+    CHECK(d != nullptr);
+    int rows = 0, glyphDiff = 0, colorDiff = 0;
+    unsigned i = 0, gi = 0; char col[16];
+    while (d && fscanf(d, "%u %u %15s", &i, &gi, col) == 3) {
+        rows++;
+        uint32_t c = 0; bool has = g.colorOf((uint16_t)i, c);
+        char mine[16]; if (has) snprintf(mine, sizeof mine, "%06X", (unsigned)c); else snprintf(mine, sizeof mine, "-");
+        if ((unsigned)g.glyphOf((uint16_t)i) != gi) { if (glyphDiff++ < 5) printf("    glyph differs: %u '%s' app=%d tool=%u\n", i, items[i].name.c_str(), g.glyphOf((uint16_t)i), gi); }
+        if (strcmp(mine, col) != 0) { if (colorDiff++ < 5) printf("    color differs: %u '%s' app=%s tool=%s\n", i, items[i].name.c_str(), mine, col); }
+    }
+    if (d) fclose(d);
+    CHECK(rows == (int)items.size());
+    CHECK(glyphDiff == 0);
+    CHECK(colorDiff == 0);
+    printf("    %d items, %d with a picture, %d in their color\n", rows, g.recognized(), g.colored());
+}
+
 int main() {
     char tmpl[] = "/tmp/pp_test_XXXXXX";
     const char* t = getenv("PP_TMP");
@@ -385,6 +473,8 @@ int main() {
     testFavorites();
     testLoadoutsFiles();
     testRegions();
+    testGlyphRules();
+    testGlyphsMatchTool();
     testBackupCheck();
     testFuzzParsers();
 

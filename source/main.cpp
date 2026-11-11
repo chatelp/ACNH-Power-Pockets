@@ -322,6 +322,12 @@ int main(int argc, char** argv) {
         return 0;
     }
 
+    // Everything below runs before the first frame: the item and picture rules, then the
+    // engine reading, decrypting and scanning both save files. That takes seconds, or
+    // minutes when a region hash is stale (after an edit, until the game saves again):
+    // show something instead of a black screen.
+    ui.splash();
+
     // items.txt: one name per line, the item ID is the line index (unchanged format).
     FILE* it = fopen("sdmc:/switch/acnh_editor/items.txt", "rb");
     if (it) {
@@ -340,16 +346,13 @@ int main(int argc, char** argv) {
     }
     pp::Favorites favorites;
     pp::StackRules stackRules;
+    pp::GlyphMap glyphMap;                // item pictures: cosmetic, optional
     auto reloadLists = [&]() {
         favorites.load(g_allItems, FAV_NAMES, FAV_MAX, sdDir + "user_favorites.txt");
         stackRules.build(g_allItems, (sdDir + "nonstackable.txt").c_str());
+        glyphMap.build(g_allItems, (sdDir + "item_glyphs.txt").c_str());
     };
     reloadLists();
-
-    // The engine below reads, decrypts and scans both files before the first frame. That
-    // takes seconds, or minutes when a region hash is stale (after an edit, until the game
-    // saves again): show something instead of a black screen.
-    ui.splash();
 
     FsFileSystem fs; FsSaveDataAttribute attr; memset(&attr, 0, sizeof(attr));
     attr.application_id = 0x01006F8002326000ull; attr.save_data_type = 3;
@@ -612,6 +615,7 @@ int main(int argc, char** argv) {
     hooks.items = &g_allItems;
     hooks.favorites = &favorites;
     hooks.stack = &stackRules;
+    hooks.glyphs = &glyphMap;
     hooks.saveReady = saveReady;
     hooks.editSupported = editSupported;
     hooks.sessionBackupKept = sessionBackupDone;

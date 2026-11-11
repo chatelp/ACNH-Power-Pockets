@@ -20,6 +20,9 @@ jobs:
           git fetch upstream main
       - name: Engine untouched
         run: python3 tools/check_engine_untouched.py upstream/main
+      # Pillow lets run.sh compare the app's item-picture rules with tools/make_item_glyphs.py.
+      - name: Pillow
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq python3-pil
       - name: Host tests
         run: CXX=clang++ sh tests/host/run.sh
       # Real main.cpp on a fake console (synthetic save, injected failures). Written and
@@ -47,6 +50,7 @@ jobs:
           mkdir -p dist/switch/acnh_editor
           cp acnh_editor.nro icon.png dist/switch/acnh_editor/
           cp assets/font.ttf assets/items.txt assets/ui_icons.png assets/nonstackable.txt dist/switch/acnh_editor/
+          cp assets/item_glyphs.png assets/item_glyphs.txt dist/switch/acnh_editor/
       - uses: actions/upload-artifact@v4
         with:
           name: acnh-power-pockets

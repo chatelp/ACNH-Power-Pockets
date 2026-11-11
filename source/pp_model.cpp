@@ -3,8 +3,10 @@
 
 #include <cstdio>
 #include <cstring>
+#include <cstdlib>
 #include <cctype>
 #include <algorithm>
+#include <unordered_map>
 
 namespace pp {
 
@@ -290,6 +292,204 @@ int StackRules::singleCount() const {
     int n = 0;
     for (size_t i = 0; i < flags_.size(); i++) if (flags_[i]) n++;
     return n;
+}
+
+// ------------------------------- item glyphs -------------------------------
+// Mirrors tools/make_item_glyphs.py (parse_rules, rule_matches, classify,
+// find_color, item_color). "The LAST matching rule wins", so each item keeps the
+// highest index among the rules that match it.
+namespace {
+
+struct GlyphDef { int idx; bool tint; };
+
+std::vector<std::string> splitWords(const std::string& s) {
+    std::vector<std::string> out;
+    size_t i = 0;
+    while (i < s.size()) {
+        while (i < s.size() && isspace((unsigned char)s[i])) i++;
+        size_t j = i;
+        while (j < s.size() && !isspace((unsigned char)s[j])) j++;
+        if (j > i) out.push_back(s.substr(i, j - i));
+        i = j;
+    }
+    return out;
+}
+bool allDigits(const std::string& s) {
+    if (s.empty()) return false;
+    for (size_t i = 0; i < s.size(); i++) if (s[i] < '0' || s[i] > '9') return false;
+    return true;
+}
+bool hexN(const std::string& s, size_t pos, size_t n, uint32_t& out) {
+    if (pos + n > s.size()) return false;
+    uint32_t v = 0;
+    for (size_t i = 0; i < n; i++) {
+        char c = s[pos + i]; int d;
+        if (c >= '0' && c <= '9') d = c - '0';
+        else if (c >= 'a' && c <= 'f') d = c - 'a' + 10;
+        else if (c >= 'A' && c <= 'F') d = c - 'A' + 10;
+        else return false;
+        v = (v << 4) | (uint32_t)d;
+    }
+    out = v;
+    return true;
+}
+// "0x16DB" or "0x08A7-0x08EC" (whole string).
+bool parseIdRange(const std::string& s, uint32_t& a, uint32_t& b) {
+    auto prefix = [&](size_t p) { return p + 1 < s.size() && s[p] == '0' && (s[p + 1] == 'x' || s[p + 1] == 'X'); };
+    if (!prefix(0) || !hexN(s, 2, 4, a)) return false;
+    if (s.size() == 6) { b = a; return true; }
+    return s.size() == 13 && s[6] == '-' && prefix(7) && hexN(s, 9, 4, b);
+}
+// Name without its " (variant)" and without any " with ..." part.
+std::string baseName(const std::string& n) {
+    std::string b = n;
+    size_t i = b.find(" (");
+    if (i != std::string::npos && i > 0) b = b.substr(0, i);
+    size_t j = b.find(" with ");
+    if (j != std::string::npos && j > 0) b = b.substr(0, j);
+    return b;
+}
+std::string variantOf(const std::string& n) {
+    size_t i = n.find(" (");
+    if (i == std::string::npos || i == 0) return std::string();
+    std::string v = n.substr(i + 2);
+    while (!v.empty() && v[v.size() - 1] == ')') v.erase(v.size() - 1);
+    return v;
+}
+bool wordChar(char c) { return isalnum((unsigned char)c) || ((unsigned char)c & 0x80); }
+
+struct ColorDef { std::string name; uint32_t rgb; };
+// First color word of `t` (already lower-case); at each position the longest name wins.
+bool findColor(const std::string& t, const std::vector<ColorDef>& byLength, uint32_t& rgb) {
+    for (size_t pos = 0; pos < t.size(); pos++) {
+        if (pos && wordChar(t[pos - 1])) continue;
+        for (size_t k = 0; k < byLength.size(); k++) {
+            const std::string& n = byLength[k].name;
+            size_t end = pos + n.size();
+            if (end > t.size() || t[pos] != n[0] || t.compare(pos, n.size(), n) != 0) continue;
+            if (end == t.size() || !wordChar(t[end])) { rgb = byLength[k].rgb; return true; }
+        }
+    }
+    return false;
+}
+void keepLast(std::unordered_map<std::string, int>& m, const std::string& key, int rule) {
+    std::unordered_map<std::string, int>::iterator it = m.find(key);
+    if (it == m.end()) m[key] = rule; else if (rule > it->second) it->second = rule;
+}
+
+} // namespace
+
+void GlyphMap::build(const std::vector<Item>& items, const char* path) {
+    glyph_.assign(items.size(), 0);
+    color_.assign(items.size(), 0);
+    loaded_ = false;
+    glyphCount_ = rules_ = ignored_ = recognized_ = colored_ = 0;
+    FILE* f = path ? fopen(path, "rb") : nullptr;
+    if (!f) return;                                           // optional file: no pictures
+
+    std::unordered_map<std::string, GlyphDef> glyphs;
+    std::vector<ColorDef> colors;
+    struct RawRule { std::string glyph, pattern; };
+    std::vector<RawRule> raw;
+    char buf[256];
+    int lines = 0;
+    while (fgets(buf, sizeof buf, f) && lines < 8192) {       // hard cap: corrupted / huge file
+        lines++;
+        std::string line = trim(buf);
+        if (line.empty() || line[0] == '#') continue;
+        std::vector<std::string> w = splitWords(line);
+        if (w[0] == "glyph" && (w.size() == 3 || w.size() == 4) && allDigits(w[1]) && w[1].size() <= 3) {
+            int idx = atoi(w[1].c_str());
+            if (idx > 255) { ignored_++; continue; }           // one byte per item
+            GlyphDef d = { idx, w.size() == 4 && w[3] == "tint" };
+            glyphs[w[2]] = d;
+            if (idx + 1 > glyphCount_) glyphCount_ = idx + 1;
+            continue;
+        }
+        uint32_t rgb = 0;
+        if (w[0] == "color" && w.size() >= 3 && w[1].size() == 6 && hexN(w[1], 0, 6, rgb)) {
+            std::string name = w[2];
+            for (size_t i = 3; i < w.size(); i++) name += " " + w[i];
+            ColorDef c = { lower(name), rgb };
+            colors.push_back(c);
+            continue;
+        }
+        if (w.size() < 2) { ignored_++; continue; }
+        RawRule r = { w[0], trim(line.substr(line.find(w[0]) + w[0].size())) };
+        raw.push_back(r);
+    }
+    fclose(f);
+    if (glyphs.empty()) { ignored_ += (int)raw.size(); return; }
+    loaded_ = true;
+
+    // Sort the rules by kind. The value kept everywhere is the rule's position in the file.
+    std::vector<int> ruleGlyph, ruleTint;                     // per rule: cell index, tintable
+    std::vector<int> best(items.size(), -1);                  // per item: last matching rule
+    std::unordered_map<std::string, int> exact, suffix;
+    std::vector<std::pair<int, std::string> > subs;           // "~text", in file order
+    int star = -1;
+    for (size_t k = 0; k < raw.size(); k++) {
+        std::unordered_map<std::string, GlyphDef>::const_iterator g = glyphs.find(raw[k].glyph);
+        const int rule = (int)ruleGlyph.size();
+        if (g == glyphs.end()) { ignored_++; continue; }       // unknown glyph name
+        const std::string& pat = raw[k].pattern;
+        uint32_t a = 0, b = 0;
+        bool ok = true;
+        if (pat == "*") star = rule;
+        else if (parseIdRange(pat, a, b)) {
+            for (uint32_t i = a; i <= b && i < items.size(); i++) best[i] = rule;   // rules come in increasing order
+        } else {
+            std::string r = lower(pat);
+            if (r[0] == '~') { r = trim(r.substr(1)); if (r.empty()) ok = false; else subs.push_back(std::make_pair(rule, r)); }
+            else if (r[0] == '$') { r = trim(r.substr(1)); if (r.empty()) ok = false; else keepLast(suffix, r, rule); }
+            else keepLast(exact, r, rule);
+        }
+        if (!ok) { ignored_++; continue; }
+        ruleGlyph.push_back(g->second.idx);
+        ruleTint.push_back(g->second.tint ? 1 : 0);
+        rules_++;
+    }
+
+    std::vector<ColorDef> byLength = colors;                  // longest first, file order among equals
+    std::stable_sort(byLength.begin(), byLength.end(),
+                     [](const ColorDef& x, const ColorDef& y) { return x.name.size() > y.name.size(); });
+
+    for (size_t i = 0; i < items.size(); i++) {
+        if (trim(items[i].name).empty()) continue;            // unnamed id: "?" and no color
+        const std::string low = lower(items[i].name);
+        const std::string base = baseName(low);
+        int b = best[i];
+        if (star > b) b = star;
+        std::unordered_map<std::string, int>::const_iterator it = exact.find(low);
+        if (it != exact.end() && it->second > b) b = it->second;
+        // "$word": the base name is the word, or ends with it after a space or a hyphen.
+        for (size_t p = 0; p < base.size(); p++) {
+            if (p && base[p - 1] != ' ' && base[p - 1] != '-') continue;
+            it = suffix.find(p ? base.substr(p) : base);
+            if (it != suffix.end() && it->second > b) b = it->second;
+        }
+        for (size_t k = subs.size(); k-- > 0; ) {              // later rules first: stop at the first hit
+            if (subs[k].first < b) break;
+            if (low.find(subs[k].second) != std::string::npos) { b = subs[k].first; break; }
+        }
+        if (b < 0) continue;
+        glyph_[i] = (uint8_t)ruleGlyph[b];
+        if (glyph_[i] != 0) recognized_++;
+        if (!ruleTint[b]) continue;
+        uint32_t rgb = 0;
+        const std::string var = variantOf(low);
+        if ((!var.empty() && findColor(var, byLength, rgb)) || findColor(base, byLength, rgb)) {
+            color_[i] = 0x01000000u | rgb;
+            colored_++;
+        }
+    }
+}
+
+int GlyphMap::glyphOf(uint16_t id) const { return id < glyph_.size() ? glyph_[id] : 0; }
+bool GlyphMap::colorOf(uint16_t id, uint32_t& rgb) const {
+    if (id >= color_.size() || color_[id] == 0) return false;
+    rgb = color_[id] & 0xFFFFFFu;
+    return true;
 }
 
 // -------------------------------- favorites --------------------------------

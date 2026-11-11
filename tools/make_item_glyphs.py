@@ -1288,10 +1288,25 @@ def write_preview(cells, colors, path):
     print("wrote", path)
 
 
+def dump(path):
+    """One line per item: "<id> <glyph index> <RRGGBB or ->". Reference output used by
+    tests/host/run.sh to check that the app (source/pp_model.cpp) applies the rules the same way."""
+    items = load_items()
+    glyphs, colors, rules, _ = parse_rules()
+    out, _ = classify(items, rules)
+    with open(path, "w", encoding="utf-8") as f:
+        for i, n in enumerate(items):
+            idx, tint = glyphs.get(out[i], (0, False)) if out[i] is not None else (0, False)
+            c = item_color(n, colors) if tint else None
+            f.write("%d %d %s\n" % (i, idx, c[1] if c else "-"))
+
+
 if __name__ == "__main__":
     args = sys.argv[1:]
     if args[:1] == ["--coverage"]:
         coverage()
+    elif args[:1] == ["--dump"] and len(args) == 2:
+        dump(args[1])
     else:
         prev = args[args.index("--preview") + 1] if "--preview" in args else None
         build(prev)

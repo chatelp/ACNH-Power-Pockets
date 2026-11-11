@@ -44,6 +44,7 @@ struct EngineHooks {
     const std::vector<Item>* items = nullptr;
     Favorites*  favorites = nullptr;
     StackRules* stack = nullptr;
+    GlyphMap*   glyphs = nullptr;         // optional item pictures (item_glyphs.txt)
     bool saveReady = false;               // the 4 save files were read and decrypted
     bool editSupported = false;           // invariant I9 (known save layout)
     bool sessionBackupKept = false;       // a pre-edit backup of this very save state is already on the SD card

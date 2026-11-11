@@ -64,6 +64,8 @@ int main(int argc, char** argv) {
     copy(root + "/assets/icon.png", sd + "icon.png");
     copy(root + "/assets/ui_icons.png", sd + "ui_icons.png");
     copy(root + "/assets/nonstackable.txt", sd + "nonstackable.txt");
+    copy(root + "/assets/item_glyphs.png", sd + "item_glyphs.png");
+    copy(root + "/assets/item_glyphs.txt", sd + "item_glyphs.txt");
 
     // items.txt, exactly like main.cpp loads it
     std::vector<Item> items;
@@ -80,6 +82,9 @@ int main(int argc, char** argv) {
     Favorites favs; StackRules stack;
     favs.load(items, FAV_NAMES, 22, sd + "user_favorites.txt");
     stack.build(items, (sd + "nonstackable.txt").c_str());
+    GlyphMap glyphs;
+    glyphs.build(items, (sd + "item_glyphs.txt").c_str());
+    CHECK(glyphs.loaded() && glyphs.glyphOf(idOf(items, "golden axe")) != 0);
     CHECK(stack.isSingle(idOf(items, "golden axe")) && stack.isSingle(idOf(items, "star wand")));
     CHECK(!stack.isSingle(idOf(items, "Nook Miles Ticket")));
 
@@ -104,7 +109,7 @@ int main(int argc, char** argv) {
     std::deque<std::string> keyboard;
 
     EngineHooks h;
-    h.pockets = pockets; h.vals = vals; h.items = &items; h.favorites = &favs; h.stack = &stack;
+    h.pockets = pockets; h.vals = vals; h.items = &items; h.favorites = &favs; h.stack = &stack; h.glyphs = &glyphs;
     h.saveReady = true; h.editSupported = true; h.loadoutNames = LOADOUT_NAMES; h.loadoutCount = 5;
     h.sdDir = sd; h.version = "1.0.0 (harness)";
     h.apply = [&]() {
@@ -259,6 +264,27 @@ int main(int argc, char** argv) {
     press(ui, B); idle(ui);                                  // "Stay": nothing quits, nothing is written
     CHECK(applyCalls == 1);
     CHECK(ui.frame(0, 0));
+
+    // Favorites in two groups: the user's own first, then the built-in ones.
+    press(ui, B); idle(ui);                                  // close Review
+    CHECK(favs.add(idOf(items, "apple")) == Favorites::ADDED);
+    CHECK(favs.add(idOf(items, "wood")) == Favorites::ADDED);
+    CHECK(favs.add(idOf(items, "sea bass")) == Favorites::ADDED);
+    press(ui, R); idle(ui);
+    press(ui, LEFT, 6); idle(ui);                            // the panel remembers its cursor: back to page 1
+    shot("favorites-groups");
+    press(ui, RIGHT); idle(ui);                              // next page starts mid-group: header repeated
+    shot("favorites-groups-page2");
+    press(ui, LEFT); idle(ui);                               // first row of page 1 = first of YOURS, A-Z: apple
+    press(ui, Y); idle(ui);
+    CHECK(readSlot(pockets, 1).id == idOf(items, "golden axe"));   // taking never writes
+    press(ui, Y); idle(ui);                                  // place it in the next empty slot
+    {
+        bool placed = false;
+        for (int s = 1; s <= 20; s++) if (readSlot(pockets, s).id == idOf(items, "apple") && s != 11) placed = true;
+        CHECK(placed);
+    }
+    shot("pockets-apple-from-yours");
 
     // Fatal screen (save not mounted)
     EngineHooks f; f.saveReady = false; f.fatalError = "Mount failed! Close ACNH fully first.";
