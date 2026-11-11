@@ -131,13 +131,13 @@ Métriques (upem 1000, ascender 918, descender −286, line gap 0) :
 | Title | `font.title` | 28 px | 34 | Titre de dialogue, valeur du stepper, nom du loadout en aperçu |
 | Body | `font.body` | 24 px | 29 | Lignes de liste, noms d'items, valeurs, boutons |
 | Small | `font.small` | 20 px | 24 | Onglets, pied d'aide, statut, en-têtes de section, IDs, « Holding: » |
-| Micro | `font.micro` | 16 px | 19 | Badges uniquement (« 1/slot », « SD », « WRITES NOW ») |
+| Micro | `font.micro` | 16 px | 19 | Badges uniquement (« 1/slot », « WRITES NOW ») |
 
 On passe de 3 à 5 polices ouvertes (environ 130 Ko de fichier mappé une fois, plus un cache de glyphes par taille), ce qui reste négligeable en mode application. Si la mémoire devient un sujet, `font.micro` peut être remplacé par `font.small` (voir Questions ouvertes).
 
 ### 3.3 Règles
 
-- **Casse** : phrase normale (« Place + next »). Les MAJUSCULES sont réservées aux badges (`SD`, `WRITES NOW`) et aux en-têtes de groupe du Review. SDL_ttf ne gère pas l'espacement des lettres : on accepte le rendu tel quel.
+- **Casse** : phrase normale (« Place + next »). Les MAJUSCULES sont réservées aux badges (`WRITES NOW`) et aux en-têtes de groupe (Review, Favorites). SDL_ttf ne gère pas l'espacement des lettres : on accepte le rendu tel quel.
 - **Nombres** : format anglais avec virgules de milliers (`99,000`, `999,999,999`), comme le jeu en anglais. Quantités préfixées par `×` (U+00D7, présent) : `×10`. Avant / après : `12,345 » 150,000` (`»` U+00BB, présent).
 - **IDs d'items** : hexadécimal 4 chiffres préfixé `0x`, en `font.small` / `text.secondary` (`0x16DB`).
 - **Troncature** : mesurer avec `TTF_SizeUTF8`, couper au dernier caractère qui tient, puis ajouter `…` (U+2026, présent). On ne coupe plus à un nombre fixe de caractères comme aujourd'hui (`%-16.16s`). Largeurs maximales :
@@ -285,7 +285,6 @@ Ligne double (64 / pas 68).
 |---|---|---|
 | Favori ★ | icône 20×20 | `SDL_RenderCopy` de `star`. Repli : pastille `FAV` |
 | `1/slot` (non empilable) | h 24, padding horizontal 8, chanfrein 2 | `fill(badge.single.bg)` + `font.micro` `badge.single.ink` |
-| `SD` (favori ajouté par l'utilisateur) | h 24, padding 8 | `fill(surface.sunken)` + `font.micro` `text.primary` |
 | `WRITES NOW` (écriture NAND directe) | h 24, padding 8 | `fill(error.bg)` + `font.micro` `error.ink` |
 | **Puce « N changes »** (en-tête) | h 40, en `(…, 36)`, padding 16 | `fill(modified)` + carré 8×8 `ink.strong` + « 4 changes » `font.small` `ink.strong` |
 | **Puce « Up to date »** | h 40, padding 12 | `fill(ok)` + icône `check` + `font.small` `select.ink` |
@@ -376,13 +375,20 @@ Sur une ligne focalisée, les badges gardent leurs couleurs propres : ils resten
 - Pied d'aide : A Confirm · B Cancel (rétablit la valeur).
 - Quantité d'un slot : même composant, bornes 1…99, pas ±1 / ±10.
 
+### 6.15 Favoris : groupes « Yours » et « Built-in »
+Décision du 2026-11-11 : le badge « SD » qui marquait un favori ajouté par l'utilisateur est **supprimé**. Il parlait du stockage (la carte SD), pas de ce que voit le joueur.
+- La liste Favorites est coupée en deux **groupes**, chacun trié A→Z : d'abord **« YOURS · N »** (favoris ajoutés par l'utilisateur), puis **« BUILT-IN · N »** (favoris fournis avec l'app). Un groupe vide n'affiche pas son en-tête.
+- En-tête de groupe : composant 6.3 (32 px, `surface.alt`, `font.small` MAJUSCULES `text.secondary`). Il n'est pas focalisable : ↑/↓ le sautent.
+- Pagination : 8 lignes au pas de 44, un en-tête compte pour une ligne. Quand une page commence au milieu d'un groupe, on répète son en-tête avec « (cont.) ».
+- Le menu d'actions garde la distinction : « Remove from favorites » pour un favori à vous, « Hide this built-in favorite » pour un favori fourni.
+
 ## 7. Écrans
 
 | # | Maquette | Panneau / état (UX) | Points de charte illustrés |
 |---|---|---|---|
 | 01 | `01-pockets.html` | Poches, ouverture (§2.3) | 6.5, puce de modifs, Holding, point d'onglet, L grisé, + mis en avant |
 | 02 | `02-pockets-actions.html` | Menu d'actions d'un slot (§5.1-5.5) | 6.7, pied d'aide grisé |
-| 03 | `03-favorites.html` | Favoris (§2.3, §5.6) | badge SD, 1/slot, pagination |
+| 03 | `03-favorites.html` | Favoris (§2.3, §5.6) | groupes YOURS / BUILT-IN (6.15), 1/slot, pagination |
 | 04 | `04-catalog.html` | Catalogue (§2.3, §5.2) | 6.12, ★, 1/slot, pagination |
 | 05 | `05-bells-miles.html` | Argent & Miles + stepper (§5.3) | 6.4, 6.14, avertissement Wallet |
 | 06 | `06-loadouts.html` | Loadouts (§5.8) | ligne double, aperçu |

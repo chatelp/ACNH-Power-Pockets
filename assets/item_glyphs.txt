@@ -1,0 +1,1085 @@
+# ACNH Power Pockets - item glyphs: which small picture goes with each item.
+# Pictures live in item_glyphs.png. Copy both files to sdmc:/switch/acnh_editor/
+# next to items.txt. Edit freely; the app reads them at launch.
+#
+# item_glyphs.png has one 24x24 cell per glyph (x = index * 24) on 3 rows:
+#   y 0   full color, used when the item has no known color
+#   y 24  tint mask (white + gray): draw it with SDL_SetTextureColorMod(color)
+#   y 48  outlines and details, drawn over the tinted mask
+#
+# Lines:
+#   glyph <index> <name> [tint]   glyph table; "tint" = the glyph can take the item color
+#   color <RRGGBB> <name>         color vocabulary, matched as whole words
+#   <glyph name> <rule>           which items use the glyph
+#
+# Rule forms (case-insensitive, same spirit as nonstackable.txt):
+#   golden axe       exact item name, as in items.txt
+#   ~wand            the name contains "wand"
+#   $dress           the base name ends with the word "dress" (preceded by a space,
+#                    a hyphen or nothing). The base name is the name without its
+#                    trailing " (variant)" and any " with ..." part:
+#                    "frilly dress (Pink)" -> "frilly dress", "curry with rice" -> "curry".
+#   0x16DB           one item id
+#   0x08A7-0x08EC    an inclusive id range
+#   *                every item (only useful as the first, default rule)
+# Rules apply from top to bottom and the LAST matching rule wins: broad rules
+# first, fixes last. An item that no rule matches uses glyph 0 (unknown, "?").
+#
+# Item color (tint glyphs only): the first color word of the (variant), longest
+# name first, else of the base name ("white-tulip stems", "red umbrella").
+# No color found: the full-color row is used.
+#
+# Generated and checked by tools/make_item_glyphs.py (--coverage).
+
+# ----------------------------------------------------------------- glyph table
+glyph 0  unknown
+glyph 1  axe
+glyph 2  net
+glyph 3  fishing_rod
+glyph 4  shovel
+glyph 5  watering_can
+glyph 6  slingshot
+glyph 7  ladder
+glyph 8  vaulting_pole
+glyph 9  wand
+glyph 10 apple
+glyph 11 orange
+glyph 12 pear
+glyph 13 peach
+glyph 14 cherry
+glyph 15 coconut
+glyph 16 turnip
+glyph 17 tomato
+glyph 18 wheat
+glyph 19 sugarcane
+glyph 20 potato
+glyph 21 carrot
+glyph 22 pumpkin tint
+glyph 23 bamboo_shoot
+glyph 24 rose tint
+glyph 25 tulip tint
+glyph 26 pansy tint
+glyph 27 cosmos tint
+glyph 28 lily tint
+glyph 29 hyacinth tint
+glyph 30 windflower tint
+glyph 31 mum tint
+glyph 32 flower tint
+glyph 33 tree
+glyph 34 cedar
+glyph 35 palm
+glyph 36 bamboo
+glyph 37 bush tint
+glyph 38 weeds
+glyph 39 sapling
+glyph 40 seed_bag tint
+glyph 41 mushroom
+glyph 42 wood
+glyph 43 ore
+glyph 44 star_shard
+glyph 45 seasonal
+glyph 46 shell
+glyph 47 fish
+glyph 48 insect
+glyph 49 sea_creature
+glyph 50 fossil
+glyph 51 figurine
+glyph 52 painting
+glyph 53 photo
+glyph 54 poster
+glyph 55 furniture
+glyph 56 chair
+glyph 57 table
+glyph 58 bed tint
+glyph 59 sofa tint
+glyph 60 storage
+glyph 61 lamp
+glyph 62 appliance
+glyph 63 instrument
+glyph 64 houseplant
+glyph 65 clock
+glyph 66 outdoor
+glyph 67 rug tint
+glyph 68 wallpaper
+glyph 69 flooring
+glyph 70 fence
+glyph 71 shirt tint
+glyph 72 coat tint
+glyph 73 dress tint
+glyph 74 outfit tint
+glyph 75 pants tint
+glyph 76 skirt tint
+glyph 77 hat tint
+glyph 78 cap tint
+glyph 79 hair tint
+glyph 80 glasses tint
+glyph 81 mask tint
+glyph 82 socks tint
+glyph 83 shoes tint
+glyph 84 boots tint
+glyph 85 bag tint
+glyph 86 backpack tint
+glyph 87 umbrella tint
+glyph 88 recipe
+glyph 89 music
+glyph 90 ticket
+glyph 91 bells
+glyph 92 present
+glyph 93 food
+glyph 94 drink
+glyph 95 egg
+glyph 96 kit
+glyph 97 document
+
+# ------------------------------------------------------------------ colors
+color F4F1EA white
+color 4A4443 black
+color 9A9A9A gray
+color C8C8C8 light gray
+color 5E5E5E dark gray
+color D2D2D2 baby gray
+color B0ADA6 ash
+color EEE9DC off-white
+color F3E8C8 cream
+color F2EDDA ivory
+color F3E4B8 vanilla
+color DCC9A6 beige
+color BDB3A0 greige
+color D9C49E natural
+color D9443A red
+color B8344F berry red
+color B22436 ruby red
+color 8E2A2A dark red
+color D9476A rose red
+color E2512E vermilion
+color 8A2235 garnet
+color F29BB0 pink
+color F7BFCB light pink
+color F7C6D2 baby pink
+color FF6FB0 neon pink
+color D9479A fuchsia
+color C93C9E magenta
+color E0A898 rose gold
+color F2806A coral
+color F7B79A peach
+color F08A2E orange
+color F5C590 pale orange
+color F7C79A baby orange
+color FF8A2A neon orange
+color F2622E flame orange
+color F2C94C yellow
+color F0BE2E golden yellow
+color F7E8A0 baby yellow
+color D4A82A mustard
+color D8E24A lime yellow
+color E2B23A gold
+color E8A94A topaz
+color C9902E ochre
+color C4C8CC silver
+color 5BAA4A green
+color A6D98A light green
+color BFE0B0 pale green
+color C2E4AE baby green
+color 3D6E33 dark green
+color 6F7F3A moss green
+color 7E8A3A olive
+color 8FA552 avocado
+color B5D94A lime
+color A9CC48 yellow-green
+color 4FB84A parrot green
+color 7FE34A neon green
+color A5B86A green tea
+color 9EDDC0 mint
+color C3EBDD baby mint
+color 7FD4C1 aquamarine
+color 6FD0D8 aqua
+color 3FBFB5 turquoise
+color 4FC3E0 cyan
+color 2E8FA0 peacock blue
+color 4F86C6 blue
+color 9CCDEB light blue
+color 8FC8F0 sky blue
+color BFD8EE pale blue
+color BCDCF2 baby blue
+color CDE8F4 ice blue
+color 7F93A8 blue-gray
+color 4F6E9C denim
+color 2F4E8C dark blue
+color 3A4A8C indigo blue
+color 34497A navy blue
+color 34497A navy
+color 9B6FC8 purple
+color C3A8E2 light purple
+color CDB6E6 baby purple
+color A893CF wisteria
+color 7E3F6E plum
+color 8E6240 brown
+color B88A5E light brown
+color 5E3F28 dark brown
+color C29563 camel
+color 8A4B2E chestnut
+
+# Items that no rule recognizes show the unknown glyph "?".
+unknown *
+# Gyroids are one-word names ending in "oid" (before clothing, which overrides "embroidered").
+figurine ~oid
+
+# ------------------------------------------------------------------ clothing
+# Single-look clothing is listed with "(No Variations)": generic top, refined below.
+shirt ~(no variations)
+# Tops
+shirt $tee
+shirt $sweater
+coat $jacket
+coat $coat
+shirt $tank
+shirt $tank top
+shirt $blouse
+shirt $vest
+coat $parka
+shirt $cardigan
+shirt $top
+coat $peacoat
+coat $raincoat
+shirt $tunic
+shirt $sweatshirt
+coat $windbreaker
+coat $suitcoat
+coat $tailcoat
+coat $blazer
+shirt $jeogori
+coat $doublet
+shirt $smock
+coat $cape
+shirt $shirt combo
+shirt $towel
+shirt $leotard
+coat $fleece
+shirt $sash
+coat $undercoat
+shirt $waistcoat
+coat $blouson
+coat $coatigan
+shirt $muffler
+shirt $cast
+shirt $overshirt
+shirt $singlet
+shirt $shirt
+# One-piece outfits
+dress $dress
+dress $shirtdress
+outfit $outfit
+outfit $costume
+outfit $uniform
+outfit $suit
+outfit $robe
+dress $kimono
+dress $yukata
+dress $gown
+outfit $overalls
+outfit $jumpsuit
+dress $muumuu
+dress $nightgown
+outfit $wet suit
+outfit $armor
+outfit $romper
+outfit $áo dài
+dress $pinafore
+outfit $tuxedo
+outfit $combo
+outfit $apron
+dress $tunic dress
+dress $sari
+outfit $coveralls
+outfit $kurta
+outfit $bathrobe
+outfit $attire
+outfit $wrap
+outfit $skiwear
+outfit $clothing
+outfit $long-underwear set
+outfit $jinbei
+outfit $bunad
+outfit $kandoora
+outfit $coverall
+outfit $toga
+outfit $judogi
+outfit $pj's
+pants $diaper
+# Bottoms
+pants $pants
+skirt $skirt
+pants $shorts
+pants $leggings
+pants $slacks
+pants $sweatpants
+pants $jeans
+pants $cutoffs
+pants $bell-bottoms
+skirt $miniskirt
+pants $hakama
+pants $trousers
+pants $culottes
+skirt $sweatskirt
+pants $bottoms
+pants $drawers
+skirt $kilt
+pants $waders
+# Legwear
+socks $socks
+socks $stockings
+socks $tights
+socks $leg warmers
+# Shoes
+shoes $shoes
+boots $boots
+shoes $sandals
+shoes $sneakers
+shoes $pumps
+shoes $loafers
+shoes $slippers
+shoes $booties
+shoes $high tops
+shoes $high-tops
+shoes $clogs
+shoes $flip-flops
+shoes $cleats
+shoes $moccasins
+shoes $heels
+shoes $zori
+shoes $trainers
+shoes $janes
+shoes $babouches
+boots $greaves
+shoes $winklepickers
+shoes $tabi
+shoes $brogues
+# Headwear
+hat $hat
+cap $cap
+hat $helmet
+hair $crown
+hat $beret
+hat $hood
+hair $wig
+hair $hairpin
+hair $ribbon
+cap $bandanna
+cap $do-rag
+hat $hachimaki
+hat $turban
+hair $tiara
+hair $headband
+hair $wreath
+hat $boater
+hat $fedora
+hat $headdress
+hat $headgear
+hat $headpiece
+hair $hair
+hair $bun
+hair $antennae
+hair $ears
+hair $horns
+hair $halo
+hair $hair clip
+hat $sombrero
+hat $veil
+hair $bow
+hat $headphones
+hat $accessory
+hat $ski mask
+hat $nightcap
+cap $headcover
+cap $casquette
+hair $bopper
+hat $head
+hat $tam-o'-shanter
+hat $tubeteika
+hat $kaffiyeh
+hat $matanpushi
+# Face accessories
+glasses $glasses
+glasses $shades
+glasses $sunglasses
+glasses $goggles
+mask $mask
+mask $nose
+glasses $monocle
+mask $eye patch
+mask $beak
+mask $mustache
+mask $beard
+mask $pacifier
+mask $bandage
+mask $bandages
+mask $snorkel
+mask $bubblegum
+glasses $specs
+# Bags
+bag $bag
+backpack $backpack
+bag $purse
+bag $pochette
+backpack $knapsack
+bag $pouch
+bag $satchel
+bag $clutch
+backpack $randoseru
+backpack $schoolbag
+bag $handbag
+bag $briefcase
+bag $instrument case
+backpack $jet pack
+backpack $wings
+bag $shoulder bag
+bag $tote bag
+# Umbrellas
+umbrella $umbrella
+umbrella $parasol
+umbrella $shower
+
+# ------------------------------------------------------- interior and decor
+lamp $lamp
+lamp $light
+lamp $lights
+lamp $lantern
+lamp $candle
+lamp $candles
+lamp $chandelier
+lamp $streetlight
+lamp $torch
+lamp $candlestick
+lamp $spotlight
+rug $rug
+rug $mat
+rug $carpet
+wallpaper $wall
+wallpaper $mural
+wallpaper $wallpaper
+flooring $flooring
+flooring $flooring sheet
+flooring $flooring tile
+fence $fence
+fence $hedge
+painting $painting
+painting ~painting left half
+painting ~painting right half
+photo ~'s photo
+photo $photo
+poster ~'s poster
+poster $poster
+figurine $model
+figurine $figurine
+figurine $statue
+figurine $sculpture
+figurine $doll
+figurine $plushie
+figurine $figure
+
+table $table
+chair $chair
+bed $bed
+sofa $sofa
+chair $stool
+chair $bench
+table $desk
+storage $shelf
+storage $shelves
+storage $bookshelf
+storage $cabinet
+storage $dresser
+storage $wardrobe
+storage $closet
+table $counter
+appliance $kitchen
+appliance $sink
+appliance $toilet
+appliance $bathtub
+appliance $refrigerator
+appliance $stove
+clock $clock
+appliance $tv
+storage $rack
+furniture $stand
+storage $box
+storage $boxes
+outdoor $mailbox
+outdoor $doorplate
+outdoor $sign
+furniture $partition
+furniture $screen
+outdoor $fountain
+appliance $machine
+appliance $maker
+instrument $piano
+instrument $guitar
+instrument $drum
+instrument $drums
+appliance $speaker
+appliance $stereo
+appliance $player
+appliance $radio
+appliance $phone
+appliance $fan
+appliance $heater
+storage $basket
+storage $barrel
+storage $crate
+furniture $cart
+outdoor $tent
+outdoor $arch
+outdoor $pillar
+furniture $decoration
+furniture $garland
+furniture $mirror
+houseplant $vase
+houseplant $pot
+houseplant $planter
+houseplant $plant
+tree $tree
+furniture $trophy
+furniture $toy
+furniture $game
+table $vanity
+furniture $board
+chair $cushion
+chair $seat
+storage $locker
+furniture $mannequin
+outdoor $tower
+furniture $mug
+appliance $camera
+storage $case
+furniture $set
+furniture $tile
+furniture $balloon
+outdoor $pennant
+outdoor $flag
+furniture $globe
+furniture $megaphone
+outdoor $staircase
+outdoor $standee
+outdoor $bike
+outdoor $car
+outdoor $stall
+furniture $bear
+furniture $dharma
+furniture $tray
+storage $bin
+storage $can
+outdoor $rock
+outdoor $stone
+furniture $pile
+furniture $panel
+furniture $plaque
+furniture $ball
+furniture $ring
+furniture $wheel
+furniture $bottle
+outdoor $pole
+furniture $cone
+furniture $sheet
+outdoor $bridge
+bed $hammock
+outdoor $swing
+outdoor $slide
+appliance $tub
+outdoor $well
+appliance $oven
+appliance $computer
+appliance $monitor
+appliance $register
+furniture $altar
+furniture $podium
+furniture $sculpture
+storage $chest
+furniture $kotatsu
+bed $futon
+bed $sleeping bag
+outdoor $house
+outdoor $booth
+outdoor $gate
+furniture $curtains
+
+# ------------------------------------------------------------ plants & food
+turnip spoiled turnips
+turnip $turnips
+tomato tomato
+wheat wheat
+sugarcane sugarcane
+potato potato
+carrot carrot
+pumpkin yellow pumpkin
+pumpkin orange pumpkin
+pumpkin green pumpkin
+pumpkin white pumpkin
+bamboo_shoot bamboo shoot
+bamboo_shoot young spring bamboo
+weeds seaweed
+weeds sea grapes
+potato $potatoes
+carrot ~ripe carrot
+potato ~ripe potato
+sugarcane ~ripe sugarcane
+tomato ~ripe tomato
+wheat ~ripe wheat
+pumpkin ~-pumpkin plant
+mushroom $mushroom
+mushroom elegant mushroom
+mushroom rare mushroom
+rose $roses
+tulip $tulips
+pansy $pansies
+cosmos $cosmos
+lily $lilies
+hyacinth $hyacinths
+windflower $windflowers
+mum $mums
+flower $stems
+flower $buds
+flower $bouquet
+flower $carnations
+flower $forsythia
+bush $bush
+bush $azalea
+bush $hydrangea
+bush $hibiscus
+bush $tea olive
+bush $camellia
+bush $holly
+weeds $weeds
+weeds clump of weeds
+flower $flower
+cosmos $cosmos plant
+tulip $tulip plant
+rose $rose plant
+pansy $pansy plant
+lily $lily plant
+hyacinth $hyacinth plant
+windflower $windflower plant
+mum $mum plant
+seed_bag ~-rose bag
+seed_bag ~-tulip bag
+seed_bag ~-pansy bag
+seed_bag ~-cosmos bag
+seed_bag ~-lily bag
+seed_bag ~-hyacinth bag
+seed_bag ~-windflower bag
+seed_bag ~-mum bag
+seed_bag $seed
+seed_bag $seed potato
+seed_bag $start
+sapling $sapling
+sapling $sprout
+sapling $sprouts
+sapling $nursery
+sapling ~nursery
+tree hardwood tree
+palm coconut tree
+bamboo bamboo tree
+tree apple tree
+tree orange tree
+tree pear tree
+tree peach tree
+tree cherry tree
+cedar cedar tree
+sapling ~small young
+sapling ~medium young
+sapling ~large young
+
+# ------------------------------------------------------------- materials
+wood wood
+wood softwood
+wood hardwood
+wood tree branch
+wood bamboo piece
+wood young spring bamboo
+wood $log
+ore stone
+ore clay
+ore iron nugget
+ore gold nugget
+ore gold bars
+ore $nugget
+star_shard star fragment
+star_shard large star fragment
+star_shard $fragment
+seasonal maple leaf
+seasonal acorn
+seasonal pine cone
+seasonal snowflake
+seasonal large snowflake
+seasonal cherry-blossom petal
+seasonal $ornament
+seasonal candy
+seasonal $candy
+seasonal festive wrapping paper
+seasonal $feather
+seasonal $leaf
+seasonal summer shell
+seasonal $petal
+seasonal vine
+seasonal glowing moss
+seasonal $moss
+
+# ------------------------------------------------------------ cooking
+food $pie
+food $tart
+food $cake
+food $cakes
+food $soup
+food $potage
+food $curry
+food $salad
+food $bread
+food $donut
+food $sandwich
+food $sandwich set
+food $pizza
+food $spaghetti
+food ~spaghetti
+food $rice
+food $cookies
+food $jam
+food $gratin
+food $quiche
+food $risotto
+food $nigirizushi
+food $chips
+food $fries
+food $omurice
+food $pancakes
+food $crepe
+food $meal
+food $plate meal
+food $pudding
+food $jelly
+food $scones
+food $cupcakes
+food $cupcake
+food $bagel sandwich
+food $pretzels
+food ~gnocchi
+food $pilaf
+food $biryani
+food $meunière
+food $chowder
+food $poke
+food $ankake
+food $sebaetdon
+food $noodles
+food $pound cake
+food $carpaccio
+food $ajillo
+food $tteok
+food $ramen
+food $soft serve
+food $cotton candy
+food $snack
+food $casserole
+food $flour
+food $whole-wheat flour
+food $sugar
+food $brown sugar
+food $pad krapow
+food $dango
+food $fish-and-chips
+food $fruit salad
+food $cone
+drink $smoothie
+drink $juice
+drink $milkshake
+drink $milk
+drink $tea
+drink $coffee
+drink $latte
+drink $soda
+drink $cider
+drink $shake
+drink $drink
+drink $beverage
+
+# ------------------------------------------------------------- music & paper
+music ~K.K.
+music The K. Funk
+music Only Me
+music I Love You
+music Two Days Ago
+music My Place
+music Forest Life
+music To the Edge
+music Pondering
+music Mountain Song
+music Marine Song 2001
+music Neapolitan
+music Steep Hill
+music Stale Cupcakes
+music Spring Blossoms
+music Hypno K.K.
+music Bubblegum K.K.
+music Drivin'
+music Farewell
+music Welcome Horizons
+music Animal City
+recipe $recipe
+recipe $recipes
+recipe ~DIY
+recipe ~ Recipe
+ticket $ticket
+ticket $voucher
+bells $bells
+bells Bell bag
+bells $bell bag
+bells $money
+bells lucky money
+bells $red envelope
+bells $envelope
+bells $lucky pouch
+bells otoshidama
+present $present
+present $gift
+present someone's gift
+present $wrapping paper
+present ~present
+egg $egg
+kit customization kit
+kit $kit
+kit $construction kit
+document $permit
+document $construction permit
+document $map
+document $book
+document $notebook
+document $cards
+document $guide
+document Top 6 Stylish Hairstyles
+document $magazine
+
+# ------------------------------------------------------------ tools
+axe $axe
+axe flimsy axe
+axe stone axe
+axe golden axe
+net $net
+fishing_rod $fishing rod
+fishing_rod golden rod
+fishing_rod flimsy fishing rod
+fishing_rod fish fishing rod
+shovel $shovel
+watering_can $watering can
+slingshot $slingshot
+ladder ladder
+ladder golden ladder set-up kit
+ladder ladder set-up kit
+ladder $ladder set-up kit
+vaulting_pole vaulting pole
+wand $wand
+music Wandering
+
+# ------------------------------------------------------------ id blocks
+# Contiguous blocks found in items.txt. Fixes for items inside them follow.
+fish 0x08A7-0x08EC
+fish 0x105D-0x1062
+fish 0x1069-0x106C
+fish crucian carp
+fish goldfish
+fish ranchu goldfish
+insect 0x0246-0x028D
+insect 0x0D95-0x0D9F
+insect damselfly
+sea_creature firefly squid
+sea_creature gazami crab
+sea_creature vampire squid
+sea_creature gigas giant clam
+sea_creature sea pineapple
+sea_creature moon jellyfish
+sea_creature umbrella octopus
+sea_creature slate pencil urchin
+sea_creature whelk
+sea_creature sea pig
+sea_creature Dungeness crab
+sea_creature mussel
+sea_creature 0x0B0E-0x0B2A
+shell 0x0B12
+shell 0x0B16
+fossil $tail
+fossil amber
+fossil ammonite
+fossil coprolite
+fossil archaeopteryx
+fossil dinosaur track
+fossil australopith
+fossil shark-tooth pattern
+fossil trilobite
+fossil fossil
+fossil $skull
+fossil $torso
+fossil $chest
+fossil $pelvis
+fossil $neck
+fossil $ptera wing
+fossil $ptera body
+fossil ~ptera
+fossil ~plesio
+fossil ~tricera
+fossil diplo tail tip
+
+# --------------------------------------------------------------- fixes
+# Inside the blocks above, or names that the broad rules get wrong.
+backpack jet pack (Black)
+backpack jet pack (White)
+bag satchel (Black)
+bag satchel (Camel)
+bag satchel (Blue)
+bag satchel (Red)
+furniture drone beetle
+furniture cone
+food vanilla cone
+food chocolate cone
+food strawberry cone
+food ramune-soda-lemon cone
+food melon-cheesecake cone
+food orange-mint cone
+hat balloon hat (Rainbow)
+pear pear
+peach peach
+cherry cherry
+coconut coconut
+apple apple
+orange orange
+shell sand dollar
+shell coral
+shell giant clam
+shell sea snail
+shell venus comb
+shell conch
+shell cowrie
+shell pearl
+shell summer shell
+shell spiral shell
+shell cicada shell
+insect cicada shell
+figurine cicada shell model
+outfit ~-egg shell
+flower foxtail
+shell turban shell
+sea_creature manila clam
+document cliff construction permit
+music k.k. slider's guitar (internal)
+outfit $suit of lights
+table $workbench
+table cute DIY table
+furniture Shell
+furniture shell wand
+wand shell wand
+photo K.K.'s photo
+furniture beach towel
+socks $knee braces
+insect giant water bug
+bag $instrument case
+furniture Mom's embroidery
+food ~carpaccio
+food pesce all'acqua pazza
+document ~Hairstyles
+document $License
+recipe Tool Ring: It's Essential!
+music Chillwave
+wallpaper sea view
+wallpaper meadow vista
+wallpaper wallpaper
+wallpaper old wallpaper
+flooring daisy meadow
+flooring wildflower meadow
+furniture asteroid
+fossil $megalo side
+food tantanmen
+food osechi
+food sardines in oil
+food salad-stuffed tomato
+food ~chocolates
+flower pampas grass
+unknown What was this again?
+
+# --------------------------------------------------- flower types, plants
+rose $roses
+rose $rose stems
+rose $rose buds
+rose $rose plant
+tulip $tulips
+tulip $tulip stems
+tulip $tulip buds
+tulip $tulip plant
+pansy $pansies
+pansy $pansy stems
+pansy $pansy buds
+pansy $pansy plant
+cosmos $cosmos
+cosmos $cosmos stems
+cosmos $cosmos buds
+cosmos $cosmos plant
+lily $lilies
+lily $lily stems
+lily $lily buds
+lily $lily plant
+hyacinth $hyacinths
+hyacinth $hyacinth stems
+hyacinth $hyacinth buds
+hyacinth $hyacinth plant
+windflower $windflowers
+windflower $windflower stems
+windflower $windflower buds
+windflower $windflower plant
+mum $mums
+mum $mum stems
+mum $mum buds
+mum $mum plant
+bush $bush
+bush ~young white azalea
+weeds $weeds
+weeds clump of weeds
+weeds seaweed
+tree $tree
+cedar cedar tree
+palm coconut tree
+bamboo bamboo tree
+sapling ~small young
+sapling ~medium young
+sapling ~large young
+
+# ---------------------------------------------------- more furniture words
+outdoor $signpost
+outdoor $wagon
+outdoor $ramp
+appliance $kettle
+appliance $mixer
+appliance $cooler
+appliance $fireplace
+appliance $scale
+appliance $switch
+appliance $nes
+storage $bucket
+storage $container
+storage $organizer
+storage $lowboard
+instrument electric bass
+instrument cello
+instrument fancy violin
+instrument ukulele
+instrument synthesizer
+instrument harp
+furniture $mobile
+furniture $block
+furniture $display
+furniture $horse
+furniture $pitcher
+furniture $plate
+furniture $panda
+
+# ------------------------------------- internal Japanese names: always "?"
+unknown 0x0A87
+unknown 0x323B
+unknown 0x323C
+unknown 0x323D
+unknown What was this again?
+fish sea horse
