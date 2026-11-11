@@ -136,10 +136,13 @@ std::string formatThousands(uint64_t v);                       // 99999 -> "99,9
 //   ~wand          substring of the name (case-insensitive)
 //   -<rule>        removes matches of <rule> (applied in order)
 //   # comment / blank lines ignored
+class GlyphMap;
 class StackRules {
 public:
-    // Builds the flags from the built-in rules, then from `userPath` if it exists.
-    void build(const std::vector<Item>& items, const char* userPath);
+    // Builds the flags from the built-in rules (tools), then from the item kinds that
+    // never stack ("single" glyphs of item_glyphs.txt, when `glyphs` is loaded), then
+    // from `userPath` if it exists: its rules apply last and can add or remove items.
+    void build(const std::vector<Item>& items, const char* userPath, const GlyphMap* glyphs = nullptr);
     bool isSingle(uint16_t id) const;
     int  fileRules() const   { return fileRules_; }
     int  fileIgnored() const { return fileIgnored_; }
@@ -165,6 +168,8 @@ public:
     void build(const std::vector<Item>& items, const char* path);
     bool loaded() const      { return loaded_; }      // file found, with a glyph table
     int  glyphOf(uint16_t id) const;                  // cell index, 0 = unknown ("?")
+    // True when the item's kind never stacks in the game ("single" flag of its glyph).
+    bool singleKind(uint16_t id) const;
     // True when the item's glyph can be tinted AND a color word was found in its name.
     bool colorOf(uint16_t id, uint32_t& rgb) const;
     int  glyphCount() const  { return glyphCount_; }  // highest index + 1
@@ -175,6 +180,7 @@ public:
 private:
     std::vector<uint8_t>  glyph_;
     std::vector<uint32_t> color_;                     // 0 = none, else 0x01RRGGBB
+    std::vector<uint8_t>  singleGlyph_;               // per cell index: kind never stacks
     bool loaded_ = false;
     int  glyphCount_ = 0, rules_ = 0, ignored_ = 0, recognized_ = 0, colored_ = 0;
 };

@@ -347,11 +347,11 @@ int main(int argc, char** argv) {
     }
     pp::Favorites favorites;
     pp::StackRules stackRules;
-    pp::GlyphMap glyphMap;                // item pictures: cosmetic, optional
+    pp::GlyphMap glyphMap;                // item pictures, and which kinds of items never stack
     auto reloadLists = [&]() {
         favorites.load(g_allItems, FAV_NAMES, FAV_MAX, sdDir + "user_favorites.txt");
-        stackRules.build(g_allItems, (sdDir + "nonstackable.txt").c_str());
-        glyphMap.build(g_allItems, (sdDir + "item_glyphs.txt").c_str());
+        glyphMap.build(g_allItems, (sdDir + "item_glyphs.txt").c_str());       // before the 1/slot rules: they use its item kinds
+        stackRules.build(g_allItems, (sdDir + "nonstackable.txt").c_str(), &glyphMap);
     };
     reloadLists();
 

@@ -266,12 +266,17 @@ bool StackRules::applyRule(const std::vector<Item>& items, const std::string& ra
     return any;
 }
 
-void StackRules::build(const std::vector<Item>& items, const char* userPath) {
+void StackRules::build(const std::vector<Item>& items, const char* userPath, const GlyphMap* glyphs) {
     flags_.assign(items.size(), 0);
     fileRules_ = fileIgnored_ = 0;
     fileFound_ = false;
     for (size_t i = 0; i < sizeof(BUILTIN_SINGLE_RULES) / sizeof(BUILTIN_SINGLE_RULES[0]); i++)
         applyRule(items, BUILTIN_SINGLE_RULES[i]);
+    // Whole kinds of items that never stack (clothes, furniture, fish, recipes...): for them
+    // the count field is a variant, so writing a quantity there would pick a wrong variant.
+    if (glyphs && glyphs->loaded())
+        for (size_t i = 0; i < items.size(); i++)
+            if (glyphs->singleKind((uint16_t)i)) flags_[i] = 1;
     if (!userPath) return;
     FILE* f = fopen(userPath, "rb");
     if (!f) return;                                            // optional file: silent
@@ -382,6 +387,7 @@ void keepLast(std::unordered_map<std::string, int>& m, const std::string& key, i
 void GlyphMap::build(const std::vector<Item>& items, const char* path) {
     glyph_.assign(items.size(), 0);
     color_.assign(items.size(), 0);
+    singleGlyph_.clear();
     loaded_ = false;
     glyphCount_ = rules_ = ignored_ = recognized_ = colored_ = 0;
     FILE* f = path ? fopen(path, "rb") : nullptr;
@@ -398,11 +404,19 @@ void GlyphMap::build(const std::vector<Item>& items, const char* path) {
         std::string line = trim(buf);
         if (line.empty() || line[0] == '#') continue;
         std::vector<std::string> w = splitWords(line);
-        if (w[0] == "glyph" && (w.size() == 3 || w.size() == 4) && allDigits(w[1]) && w[1].size() <= 3) {
+        if (w[0] == "glyph" && w.size() >= 3 && allDigits(w[1]) && w[1].size() <= 3) {
             int idx = atoi(w[1].c_str());
-            if (idx > 255) { ignored_++; continue; }           // one byte per item
-            GlyphDef d = { idx, w.size() == 4 && w[3] == "tint" };
+            bool tint = false, single = false, flagsOk = idx <= 255;   // one byte per item
+            for (size_t k = 3; k < w.size(); k++) {
+                if (w[k] == "tint") tint = true;
+                else if (w[k] == "single") single = true;
+                else flagsOk = false;
+            }
+            if (!flagsOk) { ignored_++; continue; }
+            GlyphDef d = { idx, tint };
             glyphs[w[2]] = d;
+            if ((int)singleGlyph_.size() <= idx) singleGlyph_.resize(idx + 1, 0);
+            singleGlyph_[idx] = single && idx != 0 ? 1 : 0;   // "unknown" is never single
             if (idx + 1 > glyphCount_) glyphCount_ = idx + 1;
             continue;
         }
@@ -486,6 +500,11 @@ void GlyphMap::build(const std::vector<Item>& items, const char* path) {
 }
 
 int GlyphMap::glyphOf(uint16_t id) const { return id < glyph_.size() ? glyph_[id] : 0; }
+bool GlyphMap::singleKind(uint16_t id) const {
+    if (!loaded_ || id >= glyph_.size()) return false;
+    const uint8_t g = glyph_[id];
+    return g < singleGlyph_.size() && singleGlyph_[g] != 0;
+}
 bool GlyphMap::colorOf(uint16_t id, uint32_t& rgb) const {
     if (id >= color_.size() || color_[id] == 0) return false;
     rgb = color_[id] & 0xFFFFFFu;

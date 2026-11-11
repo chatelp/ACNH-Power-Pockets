@@ -4,11 +4,13 @@
 > **This tool writes directly to your Animal Crossing: New Horizons save. It can corrupt it, and a corrupted island may be impossible to recover.**
 >
 > - **Back up your save with [JKSV](https://github.com/J-D-K/JKSV) or [Checkpoint](https://github.com/BernardoGiordano/Checkpoint) before every editing session, and copy that backup to a computer.** The app's own SD backups are a safety net, not a replacement.
-> - **No edited save has been accepted by the game yet.** In the first test on a real console (game 3.0.3), the app wrote exactly the intended pocket slots, but the game refused the save: one integrity hash had not been updated. That is fixed and checked against dumps of that very save, but the fixed build has not been through the game yet. Do the [first-use test](#first-use-test) on a save you can afford to lose before touching your real island.
+> - **Tested on one console and one save only (game 3.0.3).** The very first test was refused by the game as corrupted: one integrity hash had not been updated. Version 1.0.0 recomputes them, and its edits were then accepted by the game. That is a single island: do the [first-use test](#first-use-test) on a save you can afford to lose before touching yours.
 > - Offline use only. Editing saves can get you into trouble online and may break Nintendo's terms of service. Never trade edited or unreleased items with other players.
 > - Provided **as is, with no warranty of any kind** (MIT license). You alone are responsible for what happens to your save, your console and your accounts. Not affiliated with or endorsed by Nintendo.
 
 ![Power Pockets: pocket and Bells editor for ACNH](banner.png)
+
+**[Download the latest release](../../releases/latest)** · Nintendo Switch with Atmosphère · Animal Crossing: New Horizons 3.0.x
 
 **Fill your pockets fast, and see every change before a single byte is written.**
 
@@ -48,7 +50,7 @@ Pick an item once, from your favorites, the catalog, or your own pockets. Each p
 
 ### A picture and a color for every item
 
-98 small original pictures, one per kind of item, tinted with the item's color when its name gives one. Items that never stack (tools, wands, saplings…) carry a `1/slot` badge and are never given a quantity they can't hold.
+98 small original pictures, one per kind of item, tinted with the item's color when its name gives one. Items that never stack (clothes, furniture, fish and bugs, recipes, tools… about 9,300 of them) carry a `1/slot` badge and are never given a quantity they can't hold. For those items the game uses the "quantity" field to pick a variant, so a wrong number there would give you a different item.
 
 | | |
 |---|---|
@@ -78,7 +80,7 @@ Restoring a backup and the Save Doctor write to the console right away. They liv
 Do this once, with a save you can afford to lose. It answers two questions nobody has checked yet on this version: does the game accept a save written by this tool, and how does the game count stacks?
 
 1. Back up the save with JKSV or Checkpoint and copy the backup to a computer.
-2. Launch Power Pockets. Put **Nook Miles Ticket** in an **empty** slot with quantity **9** (*Favorites* › *Take with quantity…* › 9, then **Y** in *Pockets*). Press **+**, then **Apply**. Change nothing else, and leave the loan alone (see [Known limitations](#known-limitations)).
+2. Launch Power Pockets. Put **Nook Miles Ticket** in an **empty** slot with quantity **9** (*Favorites* › *Take with quantity…* › 9, then **Y** in *Pockets*). Press **+**, then **Apply**. Change nothing else. Use a real stackable item: "gold bars", for instance, is a piece of furniture (the stackable material is "gold nugget").
 3. Start the game:
    - **The save doesn't load, or the game offers to restore it:** stop. Restore your JKSV/Checkpoint backup and [open an issue](../../issues) with your game version.
    - **You get 10 tickets:** the game stores "quantity − 1". Displayed quantities are off by one until `kCountZeroBased` is set to `true` in `source/pp_model.h`. Please report it.
@@ -89,7 +91,7 @@ Do this once, with a save you can afford to lose. It answers two questions nobod
 
 Requirements: a Switch running Atmosphère, and Animal Crossing: New Horizons **3.0.x** (other save versions open read-only).
 
-1. Get the `switch/acnh_power_pockets/` folder from the [Actions tab](../../actions) (latest green run, artifact `acnh-power-pockets`; a GitHub login is required) and copy it to the root of the SD card. Releases will follow once the app has been validated on a console.
+1. Download `ACNH-Power-Pockets-v1.0.0.zip` from the [latest release](../../releases/latest) and extract it to the root of the SD card. It creates `switch/acnh_power_pockets/`. Builds of every commit are also in the [Actions tab](../../actions) (GitHub login required).
 2. Fully close the game: HOME › highlight Animal Crossing › **X** › Close. A suspended game overwrites your edits on its next autosave.
 3. Hold **R** while starting Animal Crossing to open the Homebrew Menu, then launch **ACNH Power Pockets**. Launching from the Album is refused: it doesn't give the app enough access.
 
@@ -99,7 +101,8 @@ The folder should contain:
 |---|---|
 | `acnh_power_pockets.nro`, `font.ttf` | Required |
 | `items.txt` | Strongly recommended: item names, favorites and the `1/slot` protection depend on it |
-| `icon.png`, `ui_icons.png`, `item_glyphs.png`, `item_glyphs.txt`, `nonstackable.txt` | Optional: icons, item pictures, extra `1/slot` rules |
+| `item_glyphs.png`, `item_glyphs.txt` | Strongly recommended: item pictures, and the kinds of items that never stack (without them, the `1/slot` protection only covers tools and the few items listed in `nonstackable.txt`) |
+| `icon.png`, `ui_icons.png`, `nonstackable.txt` | Optional: icons, extra `1/slot` rules |
 
 ### Already using ACNH-Save-Editor?
 
@@ -174,7 +177,7 @@ All in `sdmc:/switch/acnh_power_pockets/`.
 |---|---|---|
 | `user_favorites.txt` | the app | Your favorites. Plain text, safe to edit. `.bak` keeps your previous version. |
 | `nonstackable.txt` | you | Extra `1/slot` rules (optional) |
-| `item_glyphs.png`, `item_glyphs.txt` | you (install) | Item pictures, and the rules that pick a picture and a color for each item |
+| `item_glyphs.png`, `item_glyphs.txt` | you (install) | Item pictures, the rules that pick a picture and a color for each item, and which kinds of items never stack |
 | `backup_personal.dat`, `backup_main.dat` | the app | Save as it was before the last Apply |
 | `session_personal.dat`, `session_main.dat` | the app | Pre-edit backup: save as the game last wrote it, before this app's first write |
 | `session_mark.txt` | the app | Tells the app whether the pre-edit backup still matches the console (don't edit) |
@@ -195,9 +198,9 @@ golden axe     exact item name, case-insensitive
 ~wand          every item whose name contains "wand"
 -Wandering     undo a match
 ```
-Tools (axes, nets, fishing rods, shovels, watering cans, slingshots, ladder, vaulting pole) are always `1/slot`. The shipped file adds wands, saplings and sprouts.
+Tools (axes, nets, fishing rods, shovels, watering cans, slingshots, ladder, vaulting pole) are always `1/slot`. Whole kinds of items (clothes, furniture, fish, recipes…) are `1/slot` through `item_glyphs.txt`. The shipped `nonstackable.txt` adds wands, saplings and sprouts, and its rules apply last, so it can also take an item off the list.
 
-`item_glyphs.txt` documents its own format at the top of the file. The pictures are cosmetic: a mistake in that file can't affect the save.
+`item_glyphs.txt` documents its own format at the top of the file. A mistake in it only changes the pictures and which items are treated as `1/slot`.
 
 ## Troubleshooting
 
@@ -206,7 +209,7 @@ Tools (axes, nets, fishing rods, shovels, watering cans, slingshots, ladder, vau
 | "The save can't be opened" | The game is still running or suspended. Close it fully (HOME › X › Close), then relaunch through the game holding **R**. |
 | Red "missing file" or "unreadable file" text at launch | `font.ttf` is missing from `sdmc:/switch/acnh_power_pockets/`, or its copy is damaged. |
 | Names show as `ID 16DB` | `items.txt` is missing. Editing still works, but favorites become read-only and the `1/slot` protection is off: put the file back before placing items. |
-| No pictures next to the items | `item_glyphs.png` or `item_glyphs.txt` is missing. System › Info says "no pictures". |
+| No pictures next to the items | `item_glyphs.png` or `item_glyphs.txt` is missing. System › Info says "no pictures". Put them back: without them the `1/slot` protection only covers tools. |
 | The game says the save data is corrupted | Restore your JKSV/Checkpoint backup. Or, in Power Pockets: System › *Restore pre-edit backup* (the state before your edits), or System › *Save Doctor* (keeps your edits and recomputes the hashes). Then please [open an issue](../../issues). |
 | Amber banner "Stale integrity hash" | The save on the console has a hash that doesn't match its data, and the game would refuse it. System › *Save Doctor* fixes it; so does any Apply. |
 | Stuck on "Reading the save…" | Not frozen. With a stale hash on the console the launch scan is slow (up to minutes). |

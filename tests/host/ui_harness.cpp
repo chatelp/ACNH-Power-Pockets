@@ -81,9 +81,9 @@ int main(int argc, char** argv) {
 
     Favorites favs; StackRules stack;
     favs.load(items, FAV_NAMES, 22, sd + "user_favorites.txt");
-    stack.build(items, (sd + "nonstackable.txt").c_str());
     GlyphMap glyphs;
     glyphs.build(items, (sd + "item_glyphs.txt").c_str());
+    stack.build(items, (sd + "nonstackable.txt").c_str(), &glyphs);
     CHECK(glyphs.loaded() && glyphs.glyphOf(idOf(items, "golden axe")) != 0);
     CHECK(stack.isSingle(idOf(items, "golden axe")) && stack.isSingle(idOf(items, "star wand")));
     CHECK(!stack.isSingle(idOf(items, "Nook Miles Ticket")));
@@ -135,7 +135,7 @@ int main(int argc, char** argv) {
         if (keyboard.empty()) return std::string(init ? init : "");
         std::string s = keyboard.front(); keyboard.pop_front(); return s;
     };
-    h.reloadLists = [&]() { favs.load(items, FAV_NAMES, 22, sd + "user_favorites.txt"); stack.build(items, (sd + "nonstackable.txt").c_str()); };
+    h.reloadLists = [&]() { favs.load(items, FAV_NAMES, 22, sd + "user_favorites.txt"); glyphs.build(items, (sd + "item_glyphs.txt").c_str()); stack.build(items, (sd + "nonstackable.txt").c_str(), &glyphs); };
 
     TTF_Init();
     g_surf = SDL_CreateRGBSurfaceWithFormat(0, 1280, 720, 32, SDL_PIXELFORMAT_RGBA32);

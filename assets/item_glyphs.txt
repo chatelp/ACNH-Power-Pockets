@@ -8,7 +8,12 @@
 #   y 48  outlines and details, drawn over the tinted mask
 #
 # Lines:
-#   glyph <index> <name> [tint]   glyph table; "tint" = the glyph can take the item color
+#   glyph <index> <name> [tint] [single]
+#                                 glyph table; "tint" = the glyph can take the item color,
+#                                 "single" = items of this kind never stack in the game: the app
+#                                 shows them as 1/slot and never asks for a quantity (the count
+#                                 field of such an item is its variant). nonstackable.txt can
+#                                 still add or remove single items one by one.
 #   color <RRGGBB> <name>         color vocabulary, matched as whole words
 #   <glyph name> <rule>           which items use the glyph
 #
@@ -33,15 +38,15 @@
 
 # ----------------------------------------------------------------- glyph table
 glyph 0  unknown
-glyph 1  axe
-glyph 2  net
-glyph 3  fishing_rod
-glyph 4  shovel
-glyph 5  watering_can
-glyph 6  slingshot
-glyph 7  ladder
-glyph 8  vaulting_pole
-glyph 9  wand
+glyph 1  axe single
+glyph 2  net single
+glyph 3  fishing_rod single
+glyph 4  shovel single
+glyph 5  watering_can single
+glyph 6  slingshot single
+glyph 7  ladder single
+glyph 8  vaulting_pole single
+glyph 9  wand single
 glyph 10 apple
 glyph 11 orange
 glyph 12 pear
@@ -65,11 +70,11 @@ glyph 29 hyacinth tint
 glyph 30 windflower tint
 glyph 31 mum tint
 glyph 32 flower tint
-glyph 33 tree
-glyph 34 cedar
-glyph 35 palm
-glyph 36 bamboo
-glyph 37 bush tint
+glyph 33 tree single
+glyph 34 cedar single
+glyph 35 palm single
+glyph 36 bamboo single
+glyph 37 bush tint single
 glyph 38 weeds
 glyph 39 sapling
 glyph 40 seed_bag tint
@@ -79,49 +84,49 @@ glyph 43 ore
 glyph 44 star_shard
 glyph 45 seasonal
 glyph 46 shell
-glyph 47 fish
-glyph 48 insect
-glyph 49 sea_creature
-glyph 50 fossil
-glyph 51 figurine
-glyph 52 painting
-glyph 53 photo
-glyph 54 poster
-glyph 55 furniture
-glyph 56 chair
-glyph 57 table
-glyph 58 bed tint
-glyph 59 sofa tint
-glyph 60 storage
-glyph 61 lamp
-glyph 62 appliance
-glyph 63 instrument
-glyph 64 houseplant
-glyph 65 clock
-glyph 66 outdoor
-glyph 67 rug tint
-glyph 68 wallpaper
-glyph 69 flooring
-glyph 70 fence
-glyph 71 shirt tint
-glyph 72 coat tint
-glyph 73 dress tint
-glyph 74 outfit tint
-glyph 75 pants tint
-glyph 76 skirt tint
-glyph 77 hat tint
-glyph 78 cap tint
-glyph 79 hair tint
-glyph 80 glasses tint
-glyph 81 mask tint
-glyph 82 socks tint
-glyph 83 shoes tint
-glyph 84 boots tint
-glyph 85 bag tint
-glyph 86 backpack tint
-glyph 87 umbrella tint
-glyph 88 recipe
-glyph 89 music
+glyph 47 fish single
+glyph 48 insect single
+glyph 49 sea_creature single
+glyph 50 fossil single
+glyph 51 figurine single
+glyph 52 painting single
+glyph 53 photo single
+glyph 54 poster single
+glyph 55 furniture single
+glyph 56 chair single
+glyph 57 table single
+glyph 58 bed tint single
+glyph 59 sofa tint single
+glyph 60 storage single
+glyph 61 lamp single
+glyph 62 appliance single
+glyph 63 instrument single
+glyph 64 houseplant single
+glyph 65 clock single
+glyph 66 outdoor single
+glyph 67 rug tint single
+glyph 68 wallpaper single
+glyph 69 flooring single
+glyph 70 fence single
+glyph 71 shirt tint single
+glyph 72 coat tint single
+glyph 73 dress tint single
+glyph 74 outfit tint single
+glyph 75 pants tint single
+glyph 76 skirt tint single
+glyph 77 hat tint single
+glyph 78 cap tint single
+glyph 79 hair tint single
+glyph 80 glasses tint single
+glyph 81 mask tint single
+glyph 82 socks tint single
+glyph 83 shoes tint single
+glyph 84 boots tint single
+glyph 85 bag tint single
+glyph 86 backpack tint single
+glyph 87 umbrella tint single
+glyph 88 recipe single
+glyph 89 music single
 glyph 90 ticket
 glyph 91 bells
 glyph 92 present
@@ -1083,3 +1088,7 @@ unknown 0x323C
 unknown 0x323D
 unknown What was this again?
 fish sea horse
+
+# ------------------------------------------------- fixes found in real use
+# "gold bars" is a furniture item (a pile of bars), not the gold nugget material.
+furniture gold bars

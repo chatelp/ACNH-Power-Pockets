@@ -10,7 +10,9 @@
 #   # comment
 #
 # Tools (axes, nets, rods, shovels, watering cans, slingshots, ladder,
-# vaulting pole) are built into the app and always flagged.
+# vaulting pole) are built into the app and always flagged. Whole kinds of
+# items (clothes, furniture, fish, recipes...) are flagged through the
+# "single" glyphs of item_glyphs.txt. The rules below apply last.
 #
 # For a 1/slot item the app shows a "1/slot" badge, never asks for a quantity,
 # and writes the neutral value 0 in the count field when placing it.

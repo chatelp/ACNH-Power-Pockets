@@ -3,7 +3,7 @@
 
 Draws assets/item_glyphs.png from scratch with simple shapes (no image is read
 or traced). One 24x24 cell per glyph, left to right, in the order of the
-"glyph <index> <name> [tint]" table of assets/item_glyphs.txt, on 3 rows:
+"glyph <index> <name> [tint] [single]" table of assets/item_glyphs.txt, on 3 rows:
 
   row 0 (y 0)   full color: the glyph with its default colors
   row 1 (y 24)  tint mask: the parts to recolor, white (light) and gray 200 (shade)
@@ -1121,8 +1121,8 @@ def parse_rules(path=RULES):
         if not line or line.startswith("#"):
             continue
         parts = line.split()
-        if parts[0] == "glyph" and len(parts) in (3, 4) and parts[1].isdigit():
-            glyphs[parts[2]] = (int(parts[1]), len(parts) == 4 and parts[3] == "tint")
+        if parts[0] == "glyph" and len(parts) >= 3 and parts[1].isdigit() and set(parts[3:]) <= {"tint", "single"}:
+            glyphs[parts[2]] = (int(parts[1]), "tint" in parts[3:])
             continue
         if parts[0] == "color" and len(parts) >= 3 and re.fullmatch(r"[0-9A-Fa-f]{6}", parts[1]):
             colors.append((" ".join(parts[2:]).lower(), parts[1].upper()))

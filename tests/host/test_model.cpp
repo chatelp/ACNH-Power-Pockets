@@ -378,7 +378,7 @@ static void testGlyphRules() {
     writeText(path("glyphs.txt"),
         "# comment\n"
         "glyph 0 unknown\nglyph 1 axe\nglyph 2 dress tint\nglyph 3 cap tint\nglyph 4 flower tint\nglyph 5 music\n"
-        "glyph 6 fish\nglyph 7 shirt tint\nglyph 8 hat tint\nglyph 999 toobig\n"
+        "glyph 6 fish single\nglyph 7 shirt tint single\nglyph 8 hat single tint\nglyph 999 toobig\nglyph 9 weird sparkly\n"
         "color 0000FF blue\ncolor 88CCFF light blue\ncolor FF99AA pink\ncolor FFFFFF white\ncolor FF0000 red\n"
         "color 223366 navy blue\ncolor FFD700 gold\n"
         "unknown *\n"
@@ -411,7 +411,18 @@ static void testGlyphRules() {
     CHECK(g.glyphOf(11) == 2 && !g.colorOf(11, c));
     CHECK(g.glyphOf(12) == 2 && g.colorOf(12, c) && c == 0x223366); // "$dress" after a hyphen
     CHECK(g.glyphOf(13) == 0);                               // "undressed": not a word ending
-    CHECK(g.ignoredLines() == 4);                            // glyph 999, nosuchglyph, "lonely", "axe ~"
+    CHECK(g.ignoredLines() == 5);                            // glyph 999, unknown flag, nosuchglyph, "lonely", "axe ~"
+    // "single" kinds feed the 1/slot rules; nonstackable.txt still has the last word.
+    CHECK(g.singleKind(6) && g.singleKind(9) && g.singleKind(10) && !g.singleKind(2) && !g.singleKind(7) && !g.singleKind(0));
+    StackRules sr;
+    sr.build(items, path("missing_ns.txt").c_str(), &g);
+    CHECK(sr.isSingle(6) && sr.isSingle(9) && sr.isSingle(10) && sr.isSingle(1) && !sr.isSingle(2));
+    writeText(path("ns_override.txt"), "-sea bass\n");
+    sr.build(items, path("ns_override.txt").c_str(), &g);
+    CHECK(!sr.isSingle(6) && sr.isSingle(9));
+    StackRules plain;
+    plain.build(items, path("missing_ns.txt").c_str(), nullptr);
+    CHECK(!plain.isSingle(6) && plain.isSingle(1));          // without item kinds: tools only
     CHECK(g.glyphOf(0xFFFE) == 0 && !g.colorOf(0xFFFE, c));
     GlyphMap none; none.build(items, path("missing_glyphs.txt").c_str());
     CHECK(!none.loaded() && none.glyphOf(1) == 0);
@@ -438,6 +449,14 @@ static void testGlyphsMatchTool() {
     GlyphMap g;
     g.build(items, (std::string(root) + "/assets/item_glyphs.txt").c_str());
     CHECK(g.loaded() && g.ignoredLines() == 0 && g.glyphCount() == 98);
+    StackRules sr;
+    sr.build(items, (std::string(root) + "/assets/nonstackable.txt").c_str(), &g);
+    auto idOf = [&](const char* n) { for (size_t k = 0; k < items.size(); k++) if (items[k].name == n) return (uint16_t)k; return (uint16_t)0xFFFE; };
+    CHECK(sr.isSingle(idOf("gold bars")) && sr.isSingle(idOf("crown (No Variations)")) && sr.isSingle(idOf("sea bass")));
+    CHECK(sr.isSingle(idOf("frilly dress (Pink)")) && sr.isSingle(idOf("golden axe")) && sr.isSingle(idOf("K.K. Bossa")));
+    CHECK(!sr.isSingle(idOf("Nook Miles Ticket")) && !sr.isSingle(idOf("gold nugget")) && !sr.isSingle(idOf("wood")) && !sr.isSingle(idOf("apple")));
+    printf("    1/slot items with the shipped files: %d\n", sr.singleCount());
+    CHECK(sr.singleCount() > 9000);
     FILE* d = fopen(dumpPath, "rb");
     CHECK(d != nullptr);
     int rows = 0, glyphDiff = 0, colorDiff = 0;

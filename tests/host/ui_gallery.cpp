@@ -71,8 +71,8 @@ int main(int argc, char** argv) {
     remove((sd + "user_favorites.txt").c_str());
     favs.load(items, FAV_NAMES, 22, sd + "user_favorites.txt");
     favs.add(I("red roses")); favs.add(I("sea bass")); favs.add(I("wood"));
-    stack.build(items, (sd + "nonstackable.txt").c_str());
     glyphs.build(items, (sd + "item_glyphs.txt").c_str());
+    stack.build(items, (sd + "nonstackable.txt").c_str(), &glyphs);
 
     // The "console" pockets: a bit of everything, five free slots.
     uint8_t pockets[POCKETS_BYTES]; clearAll(pockets);
