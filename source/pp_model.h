@@ -155,7 +155,7 @@ private:
 // -------------------------------- favorites --------------------------------
 // Built-in favorites (FAV_NAMES in main.cpp, resolved by name like upstream)
 // plus a user overlay file on the SD card. The overlay is plain text:
-//   +16A2 Nook Miles Ticket     added by the user  (the ID is authoritative,
+//   +16DB Nook Miles Ticket     added by the user  (the ID is authoritative,
 //   -0A4E gold roses            built-in hidden     the name is informative)
 // Written atomically: <file>.tmp, then remove <file>, then rename. The tmp file
 // ends with "# end" so a half-written tmp is never trusted on load.
@@ -202,8 +202,12 @@ private:
 };
 
 // --------------------------------- loadouts --------------------------------
+// True when every record holds a placeable id or the empty marker: a loadout
+// file with 0xFFFD (EXTENSION) or 0xFFFF in a slot is not a pocket snapshot.
+bool pocketsPlausible(const uint8_t* pockets);
 // Reads exactly 160 bytes into `out`; returns false (and leaves `out` untouched
-// for the caller's working buffer) on a missing or truncated file (invariant I12).
+// for the caller's working buffer) on a missing, truncated or implausible file
+// (invariant I12).
 bool loadoutRead(const char* path, uint8_t out[POCKETS_BYTES]);
 bool loadoutWrite(const char* path, const uint8_t* pockets);
 
@@ -212,6 +216,24 @@ bool fileExists(const char* path);
 long fileSize(const char* path);                                  // -1 if missing
 bool writeFileAll(const char* path, const uint8_t* data, size_t size);  // SD only
 bool copyFile(const char* src, const char* dst);                  // SD only
+
+// ------------------------------ backup checking ----------------------------
+// A real backup of the loaded save can only differ from it where this app
+// writes (pockets, the 4 values, the 8 "heal" fields). Returns the number of
+// differing bytes OUTSIDE the allowed ranges; 0 means the backup belongs to
+// this save. Read-only.
+struct ByteRange { uint32_t off; uint32_t len; };
+size_t diffOutside(const uint8_t* a, const uint8_t* b, size_t size, const ByteRange* allowed, int n);
+
+// ---------------------------- pre-edit backup mark --------------------------
+// Signature of a console state (two encrypted files). The app stores the
+// signature of the state it last wrote; finding the same state at the next
+// launch means the game has not saved in between, so the pre-edit backup on
+// the SD card is still the state before the first edit and must be kept.
+std::string stateSignature(const uint8_t* a, size_t na, const uint8_t* b, size_t nb);
+// Mark file content: "<signature> ok" (pre-edit pair present) or "<signature> nopair".
+bool writeStateMark(const char* path, const std::string& signature, bool pairPresent);
+bool stateMarkMatches(const char* path, const std::string& signature);   // true only for "<signature> ok"
 
 // Read-only diagnostics.
 struct RegionRef { uint32_t off; uint32_t len; };

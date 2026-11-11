@@ -469,13 +469,22 @@ bool Favorites::resetToDefaults() {
 }
 
 // --------------------------------- loadouts --------------------------------
+bool pocketsPlausible(const uint8_t* pockets) {
+    if (!pockets) return false;
+    for (int s = 1; s <= SLOT_COUNT; s++) {
+        uint16_t id = readSlot(pockets, s).id;
+        if (id != ID_EMPTY && !validPlaceId(id)) return false;
+    }
+    return true;
+}
+
 bool loadoutRead(const char* path, uint8_t out[POCKETS_BYTES]) {
     FILE* f = fopen(path, "rb");
     if (!f) return false;
     uint8_t tmp[POCKETS_BYTES];
     size_t rd = fread(tmp, 1, POCKETS_BYTES, f);
     fclose(f);
-    if (rd != (size_t)POCKETS_BYTES) return false;
+    if (rd != (size_t)POCKETS_BYTES || !pocketsPlausible(tmp)) return false;
     memcpy(out, tmp, POCKETS_BYTES);
     return true;
 }
@@ -530,6 +539,49 @@ bool copyFile(const char* src, const char* dst) {
     if (fflush(out) != 0) ok = false;
     if (fclose(out) != 0) ok = false;
     return ok;
+}
+
+// ------------------------------ backup checking ----------------------------
+size_t diffOutside(const uint8_t* a, const uint8_t* b, size_t size, const ByteRange* allowed, int n) {
+    if (!a || !b) return size ? size : 1;
+    size_t bad = 0;
+    for (size_t i = 0; i < size; i++) {
+        if (a[i] == b[i]) continue;
+        bool ok = false;
+        for (int k = 0; k < n && !ok; k++)
+            ok = i >= allowed[k].off && i - allowed[k].off < allowed[k].len;
+        if (!ok) bad++;
+    }
+    return bad;
+}
+
+// ---------------------------- pre-edit backup mark --------------------------
+static uint64_t fnv1a(uint64_t h, const uint8_t* d, size_t n) {
+    for (size_t i = 0; i < n; i++) { h ^= d[i]; h *= 0x100000001B3ull; }
+    return h;
+}
+std::string stateSignature(const uint8_t* a, size_t na, const uint8_t* b, size_t nb) {
+    uint64_t h = 0xCBF29CE484222325ull;
+    if (a) h = fnv1a(h, a, na);
+    h ^= (uint64_t)na; h *= 0x100000001B3ull;                  // sizes are part of the state
+    if (b) h = fnv1a(h, b, nb);
+    h ^= (uint64_t)nb; h *= 0x100000001B3ull;
+    char buf[24];
+    snprintf(buf, sizeof buf, "%016llx", (unsigned long long)h);
+    return buf;
+}
+bool writeStateMark(const char* path, const std::string& signature, bool pairPresent) {
+    const std::string s = signature + (pairPresent ? " ok\n" : " nopair\n");
+    return writeFileAll(path, (const uint8_t*)s.data(), s.size());
+}
+bool stateMarkMatches(const char* path, const std::string& signature) {
+    FILE* f = fopen(path, "rb");
+    if (!f) return false;
+    char buf[64];
+    size_t n = fread(buf, 1, sizeof buf - 1, f);
+    fclose(f);
+    buf[n] = 0;
+    return !signature.empty() && trim(buf) == signature + " ok";
 }
 
 int regionsHashOk(const uint8_t* plain, size_t size, const RegionRef* r, int n, HashFn fn) {

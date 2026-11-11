@@ -300,7 +300,27 @@ int main(int argc, char** argv) {
     TTF_Init();
     const std::string sdDir = "sdmc:/switch/acnh_editor/";
     pp::Ui ui;
-    ui.init(g_ren, sdDir);
+    if (!ui.init(g_ren, sdDir)) {
+        // font.ttf is there but can't be loaded: every screen would be blank while the
+        // buttons still work. Stop here, before the save is opened.
+        ui.shutdown();
+        TTF_Quit();
+        SDL_DestroyRenderer(g_ren); SDL_DestroyWindow(win); SDL_Quit();
+        consoleInit(NULL);
+        printf("\x1b[31m\n\n  !! ACNH POWER POCKETS - UNREADABLE FILE !!\x1b[0m\n\n");
+        printf("  font.ttf in sdmc:/switch/acnh_editor/ can't be loaded (damaged copy?).\n");
+        printf("  Copy font.ttf again from the release zip.\n\n");
+        printf("  Nothing was read or written. Press [A] to exit.\n");
+        consoleUpdate(NULL);
+        while (appletMainLoop()) {
+            padUpdate(&guard_pad);
+            if (padGetButtonsDown(&guard_pad) & HidNpadButton_A) break;
+            consoleUpdate(NULL);
+            svcSleepThread(16000000);
+        }
+        consoleExit(NULL);
+        return 0;
+    }
 
     // items.txt: one name per line, the item ID is the line index (unchanged format).
     FILE* it = fopen("sdmc:/switch/acnh_editor/items.txt", "rb");
@@ -325,6 +345,11 @@ int main(int argc, char** argv) {
         stackRules.build(g_allItems, (sdDir + "nonstackable.txt").c_str());
     };
     reloadLists();
+
+    // The engine below reads, decrypts and scans both files before the first frame. That
+    // takes seconds, or minutes when a region hash is stale (after an edit, until the game
+    // saves again): show something instead of a black screen.
+    ui.splash();
 
     FsFileSystem fs; FsSaveDataAttribute attr; memset(&attr, 0, sizeof(attr));
     attr.application_id = 0x01006F8002326000ull; attr.save_data_type = 3;
@@ -556,13 +581,30 @@ int main(int argc, char** argv) {
     // ======================================================================
     // UI hooks. They only call the engine blocks above, unchanged.
     // ======================================================================
-    const bool saveReady = personal && pHdr && mainData && mHdr && origP && origM;
+    const bool filesRead = personal && pHdr && mainData && mHdr;
+    // The UI reads the 20 pocket records even in read-only mode: they must be inside the file.
+    const bool saveReady = filesRead && origP && origM && pSz >= POCKETS_BASE + pp::POCKETS_BYTES;
     // Invariant I9: offsets above are those of save revision 3.0.x (NHSE
     // PersonalOffsets30 / MainSaveOffsets30). Other sizes => read-only.
     const bool editSupported = saveReady && pSz == 0x74A40 && mSz == 0x9B0E90;
     static char fatalBuf[128];
     snprintf(fatalBuf, sizeof fatalBuf, "%s", g_status_buf);
-    bool sessionBackupDone = false;
+    // The engine only reports a failed mount or a failed read; name the other causes.
+    if (filesRead && !(origP && origM)) snprintf(fatalBuf, sizeof fatalBuf, "Not enough memory to load the save.");
+    else if (filesRead && !saveReady) snprintf(fatalBuf, sizeof fatalBuf, "Unexpected save file size.");
+
+    // Pre-edit backup (session_*.dat, SD only): the console state before this app's first
+    // write since the game last saved. The mark file holds the signature of the state the
+    // app wrote last. Same state at launch => the game has not saved in between => the pair
+    // on the SD card is still that pre-edit state and must NOT be overwritten.
+    const std::string sessP = sdDir + "session_personal.dat", sessM = sdDir + "session_main.dat";
+    const std::string markPath = sdDir + "session_mark.txt";
+    auto currentSig = [&]() { return pp::stateSignature(origP, pSz, origM, mSz); };   // origP/origM = validated console state
+    bool sessionBackupDone = editSupported && pp::fileSize(sessP.c_str()) == (long)pSz && pp::fileSize(sessM.c_str()) == (long)mSz &&
+                             pp::stateMarkMatches(markPath.c_str(), currentSig());
+    // Called after every successful console write (SD only, best effort: without the mark
+    // the next launch simply takes a fresh pre-edit backup).
+    auto markWritten = [&]() { pp::writeStateMark(markPath.c_str(), currentSig(), sessionBackupDone); };
 
     pp::EngineHooks hooks;
     hooks.pockets = saveReady ? personal + POCKETS_BASE : nullptr;
@@ -572,6 +614,7 @@ int main(int argc, char** argv) {
     hooks.stack = &stackRules;
     hooks.saveReady = saveReady;
     hooks.editSupported = editSupported;
+    hooks.sessionBackupKept = sessionBackupDone;
     hooks.fatalError = saveReady ? nullptr : fatalBuf;
     hooks.loadoutNames = LOADOUT_NAMES;
     hooks.loadoutCount = LOADOUT_COUNT;
@@ -583,22 +626,30 @@ int main(int argc, char** argv) {
         g_status_buf[0] = '\0';
         pp::syncSaveSlotVars(personal + POCKETS_BASE, g_slot, g_newId, g_newCount);
         doSave();
-        return pp::parseSaveStatus(g_status_buf);
+        pp::EngineResult r = pp::parseSaveStatus(g_status_buf);
+        if (r == pp::ER_OK) markWritten();
+        return r;
     };
     hooks.restore = [&]() -> pp::EngineResult {
         g_status_buf[0] = '\0';
         doRestore();
-        return pp::parseRestoreStatus(g_status_buf);
+        pp::EngineResult r = pp::parseRestoreStatus(g_status_buf);
+        if (r == pp::ER_OK) markWritten();
+        return r;
     };
     hooks.doctor = [&]() -> pp::EngineResult {
         g_status_buf[0] = '\0';
         doDoctor();
-        return pp::parseDoctorStatus(g_status_buf);
+        pp::EngineResult r = pp::parseDoctorStatus(g_status_buf);
+        if (r == pp::ER_OK || r == pp::ER_OK_NO_FORENSIC) markWritten();
+        return r;
     };
 
-    // Read-only validation of a backup pair before any restore (invariant I8):
-    // sizes must match this save, and the 4 EncryptedInt32 checksums must be valid
-    // once a COPY is decrypted. Catches empty / truncated / foreign backups.
+    // Read-only validation of a backup pair before any restore (invariant I8), on
+    // decrypted COPIES: sizes must match this save, the 4 EncryptedInt32 checksums must
+    // be valid, and the backup may only differ from the loaded save where this app
+    // writes (pockets, the 4 values, the 8 heal fields). Catches empty, truncated,
+    // damaged and foreign backups, and backups made before the game last saved.
     hooks.checkBackup = [&](bool session) -> pp::BackupCheck {
         std::string bp = sdDir + (session ? "session_personal.dat" : "backup_personal.dat");
         std::string bm = sdDir + (session ? "session_main.dat" : "backup_main.dat");
@@ -620,6 +671,11 @@ int main(int argc, char** argv) {
                 auto fieldOk = [](const uint8_t* b, uint32_t off) { return b[off + 7] == CalcChecksum(LE32(b + off)); };
                 if (!fieldOk(cp, WALLET_OFF) || !fieldOk(cp, BANK_OFF) || !fieldOk(cp, MILES_OFF) || !fieldOk(cm, LOAN_OFF))
                     res = pp::BC_CORRUPT;
+                const pp::ByteRange okP[] = { { POCKETS_BASE, (uint32_t)pp::POCKETS_BYTES }, { WALLET_OFF, 8 }, { BANK_OFF, 8 }, { MILES_OFF, 8 } };
+                pp::ByteRange okM[9] = { { LOAN_OFF, 8 } };
+                for (int i = 0; i < 8; i++) okM[1 + i] = { (uint32_t)(0x5B3D50 + (i * 0x74A40)), 4 };
+                if (pp::diffOutside(personal, cp, pSz, okP, 4) != 0 || pp::diffOutside(mainData, cm, mSz, okM, 9) != 0)
+                    res = pp::BC_CORRUPT;
             }
         }
         if (cp) free(cp);
@@ -627,19 +683,20 @@ int main(int argc, char** argv) {
         return res;
     };
 
-    // Start-of-session backup (SD only): the console state before the first NAND
-    // write of this session. Never overwritten during the session.
+    // Pre-edit backup (SD only), taken before the first console write. Kept as long as
+    // the console state is the one this app wrote last (see sessionBackupDone above).
     hooks.writeSessionBackup = [&]() -> bool {
         if (sessionBackupDone) return true;
-        bool ok = pp::writeFileAll((sdDir + "session_personal.dat").c_str(), origP, pSz) &&
-                  pp::writeFileAll((sdDir + "session_main.dat").c_str(), origM, mSz);
+        remove(markPath.c_str());                              // the old mark describes the pair being replaced
+        bool ok = pp::writeFileAll(sessP.c_str(), origP, pSz) && pp::writeFileAll(sessM.c_str(), origM, mSz);
+        if (!ok) { remove(sessP.c_str()); remove(sessM.c_str()); }   // no half-written pair, no wasted space
         sessionBackupDone = ok;
         return ok;
     };
-    // SD only: makes the session backup the source of the regular restore block.
+    // SD only: makes the pre-edit backup the source of the regular restore block.
     hooks.sessionToBackup = [&]() -> bool {
-        return pp::copyFile((sdDir + "session_personal.dat").c_str(), (sdDir + "backup_personal.dat").c_str()) &&
-               pp::copyFile((sdDir + "session_main.dat").c_str(), (sdDir + "backup_main.dat").c_str());
+        return pp::copyFile(sessP.c_str(), (sdDir + "backup_personal.dat").c_str()) &&
+               pp::copyFile(sessM.c_str(), (sdDir + "backup_main.dat").c_str());
     };
 
     // Read-only diagnostics for System > Info.

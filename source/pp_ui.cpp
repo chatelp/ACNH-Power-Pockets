@@ -124,7 +124,7 @@ struct Op {
     bool hasSrc;
 };
 
-struct LoadoutInfo { bool exists = false; int count = 0; uint8_t data[POCKETS_BYTES]; };
+struct LoadoutInfo { bool exists = false, bad = false; int count = 0; uint8_t data[POCKETS_BYTES]; };
 
 // =============================== implementation ============================
 struct Ui::Impl {
@@ -139,6 +139,7 @@ struct Ui::Impl {
     int focus[P_COUNT] = { 0 };
     Hand hand;
     bool backupTrusted = true, tainted = false, sessionWritten = false, quit = false;
+    bool armed = false;                   // false until the buttons held at launch are released
     std::string query;
     std::vector<int> results;
     LoadoutInfo lo[8];
@@ -532,9 +533,11 @@ struct Ui::Impl {
         if (occ && !single(r.id)) qt.detail = qtyText(r.id, r.raw);
         qt.run = [this, slot, r]() {
             if (!canEdit()) return;
-            openQtyStepper(std::string(S::M_QTY) + " " + itemName(r.id),
-                           std::max(QTY_MIN, std::min(QTY_MAX, rawToQty(r.raw))),
-                           [this, slot](int64_t v) { setSlotRaw(e->pockets, slot, qtyToRaw((int)v)); dirty = true; });
+            const int shown = std::max(QTY_MIN, std::min(QTY_MAX, rawToQty(r.raw)));
+            // Confirming without moving is not a change, even when the stored count is
+            // outside 1..99 and was clamped for display.
+            openQtyStepper(std::string(S::M_QTY) + " " + itemName(r.id), shown,
+                           [this, slot, shown](int64_t v) { if ((int)v != shown) setSlotRaw(e->pockets, slot, qtyToRaw((int)v)); dirty = true; });
         };
         m.entries.push_back(qt);
         MenuEntry hq; hq.label = S::M_HELD_QTY; hq.enabled = hand.valid && !single(hand.id);
@@ -720,6 +723,7 @@ struct Ui::Impl {
     void runSearch() {
         if (!e->keyboard) return;
         std::string q = e->keyboard(S::KB_SEARCH, query.c_str());
+        if (q == query) return;                                  // cancelled or unchanged: keep the list and the cursor
         query = q;
         results = searchItems(items(), query);
         focus[P_CATALOG] = results.empty() ? 0 : 1;
@@ -813,8 +817,9 @@ struct Ui::Impl {
         for (int i = 0; i < e->loadoutCount && i < 8; i++) {
             lo[i].exists = fileExists(loPath(i).c_str());
             lo[i].count = 0;
+            lo[i].bad = false;
             if (lo[i].exists && loadoutRead(loPath(i).c_str(), lo[i].data)) lo[i].count = countItems(lo[i].data);
-            else if (lo[i].exists) memset(lo[i].data, 0, sizeof lo[i].data);
+            else if (lo[i].exists) lo[i].bad = true;             // truncated or not a pocket snapshot
         }
     }
     void drawLoadouts() {
@@ -825,14 +830,15 @@ struct Ui::Impl {
             SDL_Rect r = doubleRow(i, LIST_Y, 560, foc, false);
             SDL_Color ink = foc ? C::selectInk : C::textPrimary;
             text(fBody, e->loadoutNames[i], ink, r.x + 24, r.y + 6);
-            text(fSmall, lo[i].exists ? fmt(S::LO_SAVED_FMT, lo[i].count) : std::string(S::LO_EMPTY),
-                 foc ? C::selectInk : (lo[i].exists ? C::textSecond : C::disabledInk), r.x + 24, r.y + 36);
+            text(fSmall, lo[i].bad ? std::string(S::LO_BAD) : lo[i].exists ? fmt(S::LO_SAVED_FMT, lo[i].count) : std::string(S::LO_EMPTY),
+                 foc ? C::selectInk : (lo[i].bad ? C::warnInk : lo[i].exists ? C::textSecond : C::disabledInk), r.x + 24, r.y + 36);
         }
         SDL_Rect pv = { 640, LIST_Y, 584, 392 };
         fillRound(pv, 8, C::sunken);
         if (f < 0 || f >= e->loadoutCount) return;
         text(fTitle, e->loadoutNames[f], C::textPrimary, pv.x + 20, pv.y + 12);
         if (!lo[f].exists) { text(fSmall, S::LO_EMPTY, C::disabledInk, pv.x + 20, pv.y + 56); return; }
+        if (lo[f].bad) { text(fSmall, S::LO_BAD, C::warnInk, pv.x + 20, pv.y + 56); return; }
         for (int s = 1; s <= SLOT_COUNT; s++) {
             int col = (s - 1) / 10, row = (s - 1) % 10;
             int x = pv.x + 20 + col * 284, y = pv.y + 56 + row * 32;
@@ -852,7 +858,8 @@ struct Ui::Impl {
     }
     void loadoutsMenu(int i) {
         Modal m; m.kind = Modal::MENU; m.title = e->loadoutNames[i];
-        MenuEntry ld; ld.label = S::M_LOAD_LO; ld.isDefault = true; ld.enabled = lo[i].exists; ld.reason = S::LO_EMPTY;
+        MenuEntry ld; ld.label = S::M_LOAD_LO; ld.isDefault = true; ld.enabled = lo[i].exists && !lo[i].bad;
+        ld.reason = lo[i].bad ? S::LO_BAD : S::LO_EMPTY;
         ld.run = [this, i]() { askLoadLoadout(i); };
         m.entries.push_back(ld);
         MenuEntry sv; sv.label = S::M_SAVE_LO;
@@ -948,7 +955,7 @@ struct Ui::Impl {
         L.push_back({ "Region hashes", fmt("personal %d/%d \xC2\xB7 main %d/%d", info.pRegOk, info.pRegCount, info.mRegOk, info.mRegCount) });
         L.push_back({ "Heal fields", info.poisonAllZero ? "already 0 (no-op)" : "non-zero (zeroed on Apply)" });
         L.push_back({ "SD backup", (info.backupPersonal >= 0 && info.backupMain >= 0) ? std::string(backupTrusted ? "present" : "present, NOT trusted") : std::string("none") });
-        L.push_back({ "Session backup", (info.sessionPersonal >= 0 && info.sessionMain >= 0) ? std::string(sessionWritten ? "written this session" : "from an earlier session") : std::string("none") });
+        L.push_back({ "Pre-edit backup", (info.sessionPersonal >= 0 && info.sessionMain >= 0) ? std::string(sessionWritten ? "ready (before this app's first write)" : "from an older save state") : std::string("none") });
         L.push_back({ "Items", fmt("%d names", (int)items().size()) });
         int nf = e->favorites ? (int)e->favorites->list().size() : 0;
         std::string favs = fmt("%d", nf);
@@ -1016,23 +1023,40 @@ struct Ui::Impl {
         if (ok) { sessionWritten = true; infoValid = false; }
         return ok;
     }
+    // Runs `go` once the pre-edit backup is on the SD card. If it can't be written (card
+    // full...), the user decides: a rescue must not be refused for lack of SD space.
+    void afterPreEditBackup(const char* body, const char* anywayLabel, std::function<void()> go) {
+        if (ensureSessionBackup()) { go(); return; }
+        Modal d; d.kind = Modal::DIALOG; d.title = S::D_SESSION_FAIL_TITLE; d.body.push_back(body);
+        DialogButton c; c.label = S::B_CANCEL;
+        DialogButton a; a.label = anywayLabel; a.destructive = true;
+        a.run = [this, go]() { withWait(go); };
+        d.buttons.push_back(c); d.buttons.push_back(a);
+        push(d);
+    }
+    void restoreNow() {
+        EngineResult r = e->restore();
+        infoValid = false;
+        if (r == ER_OK) { snapshotBase(base, e->pockets, e->vals); setToast(T_OK, S::T_RESTORED); }
+        else if (r == ER_RESTORE_MISSING) showError(S::BK_MISSING);
+        else if (r == ER_RESTORE_SIZE) showError(S::BK_SIZE);
+        else if (r == ER_RESTORE_READ) showError(S::BK_READ);
+        else showError(S::E_RESTORE_FAILED);
+    }
     void runRestore(bool session) {
         withWait([this, session]() {
             if (session) {
-                if (!e->sessionToBackup || !e->sessionToBackup()) { showError(S::E_SESSION_TO_BACKUP); return; }
+                // The copy overwrites backup_*.dat: if it stops half-way the regular backup is a
+                // mix of two states (each file valid on its own), so it must not be offered (I6).
+                infoValid = false;
+                if (!e->sessionToBackup || !e->sessionToBackup()) { backupTrusted = false; showError(S::E_SESSION_TO_BACKUP); return; }
                 BackupCheck c = e->checkBackup(false);
-                if (c != BC_OK) { showError(backupText(c)); return; }
-            } else if (!ensureSessionBackup()) {
-                // The restore would overwrite the console state without any copy of it.
-                showError(S::E_SESSION_COPY); return;
+                if (c != BC_OK) { backupTrusted = false; showError(backupText(c)); return; }
+                backupTrusted = true;
+                restoreNow();
+                return;
             }
-            EngineResult r = e->restore();
-            infoValid = false;
-            if (r == ER_OK) { snapshotBase(base, e->pockets, e->vals); setToast(T_OK, S::T_RESTORED); }
-            else if (r == ER_RESTORE_MISSING) showError(S::BK_MISSING);
-            else if (r == ER_RESTORE_SIZE) showError(S::BK_SIZE);
-            else if (r == ER_RESTORE_READ) showError(S::BK_READ);
-            else showError(S::E_RESTORE_FAILED);
+            afterPreEditBackup(S::D_SESSION_FAIL_DIRECT, S::B_RESTORE_ANYWAY, [this]() { restoreNow(); });
         });
     }
     void askDoctor() {
@@ -1040,16 +1064,17 @@ struct Ui::Impl {
         if (!why.empty()) { blockedDialog(why); return; }
         dangerDialog(S::D_DOCTOR_SUB, S::D_DOCTOR_B1, S::D_DOCTOR_B2, S::B_HOLD_REPAIR, [this]() {
             withWait([this]() {
-                if (!ensureSessionBackup()) { showError(S::E_SESSION_COPY); return; }
-                EngineResult r = e->doctor();
-                infoValid = false;
-                if (r == ER_OK || r == ER_OK_NO_FORENSIC) {
-                    snapshotBase(base, e->pockets, e->vals);
-                    showError(r == ER_OK ? S::D_REPAIRED_BODY : S::D_REPAIRED_NOFOR, S::D_REPAIRED_TITLE);
-                } else {
-                    tainted = true;                                  // I7: origP no longer matches the NAND
-                    showError(S::E_TAINTED);
-                }
+                afterPreEditBackup(S::D_SESSION_FAIL_DIRECT, S::B_REPAIR_ANYWAY, [this]() {
+                    EngineResult r = e->doctor();
+                    infoValid = false;
+                    if (r == ER_OK || r == ER_OK_NO_FORENSIC) {
+                        snapshotBase(base, e->pockets, e->vals);
+                        showError(r == ER_OK ? S::D_REPAIRED_BODY : S::D_REPAIRED_NOFOR, S::D_REPAIRED_TITLE);
+                    } else {
+                        tainted = true;                              // I7: origP no longer matches the NAND
+                        showError(S::E_DOCTOR_FAILED, S::D_DOCTOR_FAILED_TITLE);
+                    }
+                });
             });
         });
     }
@@ -1092,6 +1117,7 @@ struct Ui::Impl {
         }
         m.focus = 0;
         m.rowFocus = -1;
+        m.top = 0;
     }
     void openReview() {
         Modal m; m.kind = Modal::REVIEW;
@@ -1162,11 +1188,21 @@ struct Ui::Impl {
         if (!(down & HidNpadButton_A)) return;
         if (m.rowFocus >= 0) {
             ReviewRow r = m.rows[m.rowFocus];
+            const int at = m.rowFocus;
             Modal mm; mm.kind = Modal::MENU; mm.title = r.target;
             MenuEntry rv; rv.label = S::M_REVERT_CHANGE; rv.isDefault = true;
-            rv.run = [this, r]() {
+            rv.run = [this, r, at]() {
                 if (r.kind == 1) revertSlot(base, e->pockets, r.slot); else revertVal(base, e->vals, r.idx);
-                if (!modals.empty() && modals.back().kind == Modal::REVIEW) buildReviewRows(modals.back());
+                if (modals.empty() || modals.back().kind != Modal::REVIEW) return;
+                // Rebuilding puts the cursor on the first button, which is Apply. Keep it in
+                // the list instead (or on the safe button): a repeated A must never write.
+                Modal& rm = modals.back();
+                buildReviewRows(rm);
+                const int n = (int)rm.rows.size();
+                int i = std::min(at, n - 1);
+                while (i < n && i >= 0 && rm.rows[i].kind == 0) i++;
+                if (i >= n) { i = std::min(at, n - 1); while (i >= 0 && rm.rows[i].kind == 0) i--; }
+                if (i >= 0 && i < n) rm.rowFocus = i; else rm.focus = rm.safe;
             };
             MenuEntry go; go.label = S::M_GO_TO;
             go.run = [this, r]() {
@@ -1189,14 +1225,8 @@ struct Ui::Impl {
         if (tainted) { showError(S::E_TAINTED); return; }
         if (pending() == 0) return;
         withWait([this, quitAfter]() {
-            // The session backup (~10 MB on the SD card) runs behind the "Writing..." screen.
-            if (ensureSessionBackup()) { applyNow(quitAfter); return; }
-            Modal d; d.kind = Modal::DIALOG; d.title = S::D_SESSION_FAIL_TITLE; d.body.push_back(S::D_SESSION_FAIL_BODY);
-            DialogButton c; c.label = S::B_CANCEL;
-            DialogButton a; a.label = S::B_APPLY_ANYWAY;
-            a.run = [this, quitAfter]() { withWait([this, quitAfter]() { applyNow(quitAfter); }); };
-            d.buttons.push_back(c); d.buttons.push_back(a);
-            push(d);
+            // The pre-edit backup (~10 MB on the SD card) runs behind the "Writing..." screen.
+            afterPreEditBackup(S::D_SESSION_FAIL_BODY, S::B_APPLY_ANYWAY, [this, quitAfter]() { applyNow(quitAfter); });
         });
     }
     void applyNow(bool quitAfter) {
@@ -1645,8 +1675,27 @@ bool Ui::init(SDL_Renderer* ren, const std::string& sdDir) {
     return d_->fBody != nullptr;
 }
 
+void Ui::splash() {
+    if (!d_) return;
+    Impl& d = *d_;
+    d.clearOps();
+    d.fill({ 0, 0, 1280, 720 }, C::bgLeaf);
+    d.fill({ 32, 24, 1216, 672 }, C::panel);
+    d.fill({ 32, 24, 1216, 64 }, C::wood);
+    if (d.appIcon) d.ops.push_back({ Op::TEX, { 48, 32, 48, 48 }, C::panel, d.appIcon, { 0, 0, 0, 0 }, false });
+    d.text(d.fDisplay, S::APP_TITLE, C::selectInk, 112, 24 + (64 - d.fontH(d.fDisplay)) / 2);
+    d.textC(d.fTitle, S::SPLASH_TITLE, C::textPrimary, { 56, 260, 1168, 40 });
+    d.textC(d.fSmall, S::SPLASH_HINT1, C::textSecond, { 56, 320, 1168, 28 });
+    d.textC(d.fSmall, S::SPLASH_HINT2, C::textSecond, { 56, 350, 1168, 28 });
+    d.fill({ 32, 640, 1216, 56 }, C::wood);
+    d.render();
+    d.render();                                  // double-buffered display: fill both buffers
+    d.dirty = true;
+}
+
 void Ui::start(EngineHooks& e) {
     d_->e = &e;
+    d_->sessionWritten = e.sessionBackupKept;
     if (d_->ready()) snapshotBase(d_->base, e.pockets, e.vals);
     if (e.favorites && e.favorites->ignoredLines())
         d_->setToast(T_WARN, fmt(S::T_FAV_IGNORED_FMT, e.favorites->ignoredLines(), plural(e.favorites->ignoredLines())));
@@ -1655,6 +1704,13 @@ void Ui::start(EngineHooks& e) {
 
 bool Ui::frame(uint64_t down, uint64_t held) {
     Impl& d = *d_;
+    // A button still held from the Homebrew Menu counts as "just pressed" on the first
+    // frame: ignore the action buttons until they have all been released once.
+    static const uint64_t ACTION_BUTTONS = HidNpadButton_A | HidNpadButton_B | HidNpadButton_X | HidNpadButton_Y |
+                                           HidNpadButton_L | HidNpadButton_R | HidNpadButton_Plus | HidNpadButton_Minus;
+    if (!d.armed) {
+        if (held & ACTION_BUTTONS) down &= ~ACTION_BUTTONS; else d.armed = true;
+    }
     if (d.pendingOp) {
         // The "Writing..." screen was presented on the previous frame; now run the blocking call.
         if (d.waitFrames++ >= 1) {

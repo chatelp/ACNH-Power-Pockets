@@ -4,7 +4,7 @@
 > **This tool writes directly to your Animal Crossing: New Horizons save. It can corrupt it, and a corrupted island may be impossible to recover.**
 >
 > - **Back up your save with [JKSV](https://github.com/J-D-K/JKSV) or [Checkpoint](https://github.com/BernardoGiordano/Checkpoint) before every editing session, and copy that backup to a computer.** The app's own SD backups are a safety net, not a replacement.
-> - **Version 1.0.0 has not been validated on real hardware yet.** It has been tested on a computer only, against a simulated engine. Do the [first-use test](#first-use-test) on a save you can afford to lose before touching your real island.
+> - **Version 1.0.0 has not been validated on real hardware yet.** It has been tested on a computer only: the real save engine runs there against a simulated console and a synthetic save, never against the game. Do the [first-use test](#first-use-test) on a save you can afford to lose before touching your real island.
 > - The save engine inherited from upstream **does not recompute the save's integrity hashes** (see [Known limitations](#known-limitations)). Whether the game tolerates this on your version is not proven.
 > - Offline use only. Editing saves can get you into trouble online and may break Nintendo's terms of service. Never trade edited or unreleased items with other players.
 > - Provided **as is, with no warranty of any kind** (MIT license). You alone are responsible for what happens to your save, your console and your accounts. Not affiliated with or endorsed by Nintendo.
@@ -105,11 +105,11 @@ The folder name is `acnh_editor`, the same as upstream ACNH-Save-Editor. Power P
 ## How your save is protected
 
 **Every Apply:**
-1. The first time in a session, copies the console's current save to `session_*.dat` on the SD card. This copy isn't overwritten again during that session.
+1. Before its first write, copies the console's current save to `session_*.dat` on the SD card: the **pre-edit backup**. It is kept, across relaunches too, for as long as the console still holds what the app wrote last. Once the game has saved again, the next Apply takes a fresh one. So it always holds the last state written by the game itself.
 2. Hands your changes to the unchanged upstream engine. The engine first writes `backup_*.dat` (the state before this Apply), then writes and commits the save.
 3. Reloads the "original" state only if every step succeeded. If anything fails, your changes stay pending and the app says what happened.
 
-**Before any restore**, the backup is checked on a decrypted copy: size and value checksums must match this save, otherwise the restore is refused. A backup that wasn't written completely is never offered.
+**Before any restore**, the backup is checked on a decrypted copy: sizes and value checksums must match, and it may only differ from the current save where this app writes (pockets, the four values, eight repair fields). Otherwise the restore is refused. A backup that is incomplete, damaged, or older than the game's last save is never offered. The backups hold `personal.dat` and `main.dat` only, without the key files: they can't be restored with another tool, and they stop being usable as soon as the game saves again.
 
 **What this does *not* protect you from:** a game version with a different save layout (the app goes read-only when file sizes are unexpected, but that check is not exhaustive), the integrity hashes noted below, power loss at the wrong moment, or SD card failure. That is why the JKSV/Checkpoint backup at the top of this page matters.
 
@@ -117,6 +117,7 @@ The folder name is `acnh_editor`, the same as upstream ACNH-Save-Editor. Power P
 
 - **Integrity hashes are not recomputed.** The save is split into regions protected by Murmur3 hashes. The engine finds them but doesn't update them after an edit. This is inherited from upstream and deliberately left alone (this fork doesn't touch the engine). System › Info shows how many hashes match.
 - **Quantity convention unconfirmed:** see the [first-use test](#first-use-test).
+- **Slow start after an edit.** Until the game has saved again, the inherited engine rescans the edited files at launch. The "Reading the save…" screen can stay up for tens of seconds after a pocket edit, and for several minutes after a loan edit. It is not frozen: wait.
 - **Only the primary resident** (`Villager0`) and **only the 20 pocket slots** (not the bag expansion).
 - **Save versions 3.0.x only**; anything else is read-only.
 - Item names are English, from `items.txt`.
@@ -130,14 +131,15 @@ All in `sdmc:/switch/acnh_editor/`.
 | `user_favorites.txt` | the app | Your favorites. Plain text, safe to edit. `.bak` keeps your previous version. |
 | `nonstackable.txt` | you | Extra `1/slot` rules (optional) |
 | `backup_personal.dat`, `backup_main.dat` | the app | Save as it was before the last Apply |
-| `session_personal.dat`, `session_main.dat` | the app | Save as it was before the first write of the current session |
+| `session_personal.dat`, `session_main.dat` | the app | Pre-edit backup: save as the game last wrote it, before this app's first write |
+| `session_mark.txt` | the app | Tells the app whether the pre-edit backup still matches the console (don't edit) |
 | `damaged_*.dat` | Save Doctor | Copy taken before a repair |
 | `l_0.dat` … `l_4.dat` | the app | Loadouts |
 | `layout_*.dat` | the app | Cache of the save's region layout |
 
 `user_favorites.txt` format:
 ```text
-+16A2 Nook Miles Ticket     a favorite you added (the hex ID counts, the name is a reminder)
++16DB Nook Miles Ticket     a favorite you added (the hex ID counts, the name is a reminder)
 -0A4E gold roses            a built-in favorite you removed
 ```
 
@@ -156,7 +158,9 @@ Tools (axes, nets, fishing rods, shovels, watering cans, slingshots, ladder, vau
 |---|---|
 | "The save can't be opened" | The game is still running or suspended. Close it fully (HOME › X › Close), then relaunch through the game holding **R**. |
 | Red "missing file" text at launch | `font.ttf` isn't in `sdmc:/switch/acnh_editor/`. |
-| Names show as `ID 16A2` | `items.txt` is missing. Editing still works; favorites become read-only. |
+| Names show as `ID 16DB` | `items.txt` is missing. Editing still works, but favorites become read-only and the `1/slot` protection is off: put the file back before placing items. |
+| Stuck on "Reading the save…" | Not frozen. After an edit, and until the game has saved again, the launch scan is slow (minutes after a loan edit). |
+| "This backup doesn't belong to the current save" | The game has saved since the backup was made, or the file is damaged. It can't be restored; use your JKSV/Checkpoint backup. |
 | "Read-only: unsupported save version" | Your save isn't the 3.0.x layout this engine knows. Nothing will be written. |
 | Changes vanished in the game | The game was suspended while you edited, or you quit without **Apply**. |
 | Restore is greyed out | Apply or discard your pending changes first, or the last backup wasn't written completely (System › Info). |
@@ -173,8 +177,9 @@ You can check the project without a Switch:
 ```sh
 git remote add upstream https://github.com/cbreezy210/ACNH-Save-Editor.git && git fetch upstream
 python3 tools/check_engine_untouched.py upstream/main   # proves the save engine is byte-identical to upstream
-sh tests/host/run.sh                                     # unit tests + compile check against libnx/SDL2 stubs
-sh tests/host/ui_shots.sh                                # renders the real UI with a fake engine, checks flows, saves screenshots
+sh tests/host/run.sh                                     # unit tests (incl. parser fuzzing) + compile check against libnx/SDL2 stubs
+sh tests/host/engine_bench.sh                            # runs the real main.cpp on a fake console: byte-exact checks of Apply / restore / Doctor, with injected failures
+sh tests/host/ui_shots.sh                                # renders the real UI with a fake engine, checks flows and failures, saves screenshots
 ```
 `ui_shots.sh` needs SDL2, SDL2_ttf (`brew install sdl2 sdl2_ttf`) and Python Pillow.
 
@@ -202,7 +207,7 @@ What changed is everything you see and touch:
 | Favorites compiled into the app | Favorites editable in the app, stored on the SD card |
 | Quantity asked for every item | `1/slot` items flagged, no quantity asked |
 | **ZL** restores in one press, **ZR ZR** runs the Doctor | Both in the System panel, hold-to-confirm, blocked with pending changes |
-| One rolling backup | Rolling backup plus a start-of-session backup, both validated before restoring |
+| One rolling backup | Rolling backup plus a pre-edit backup kept until the game saves, both validated before restoring |
 
 Upstream's own history and plans: [ROADMAP.md](ROADMAP.md) (kept unchanged).
 

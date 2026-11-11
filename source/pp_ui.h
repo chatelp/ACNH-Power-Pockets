@@ -46,6 +46,7 @@ struct EngineHooks {
     StackRules* stack = nullptr;
     bool saveReady = false;               // the 4 save files were read and decrypted
     bool editSupported = false;           // invariant I9 (known save layout)
+    bool sessionBackupKept = false;       // a pre-edit backup of this very save state is already on the SD card
     const char* fatalError = nullptr;     // shown instead of the panels when !saveReady
     const char* const* loadoutNames = nullptr;
     int loadoutCount = 0;
@@ -57,7 +58,7 @@ struct EngineHooks {
     std::function<EngineResult()> restore;             // verbatim upstream restore block
     std::function<EngineResult()> doctor;              // verbatim upstream Doctor block
     std::function<BackupCheck(bool session)> checkBackup;   // read-only validation
-    std::function<bool()> writeSessionBackup;          // SD only: origP/origM -> session_*.dat
+    std::function<bool()> writeSessionBackup;          // SD only: pre-edit backup, origP/origM -> session_*.dat (kept if already there)
     std::function<bool()> sessionToBackup;             // SD only: session_* -> backup_*
     std::function<void(InfoData&)> info;               // read-only diagnostics
     std::function<std::string(const char* guide, const char* initial)> keyboard;
@@ -66,8 +67,11 @@ struct EngineHooks {
 
 class Ui {
 public:
+    // Returns false when font.ttf can't be loaded (nothing could be drawn).
     bool init(SDL_Renderer* ren, const std::string& sdDir);
     void shutdown();
+    // Draws and presents one "Reading the save" frame; call before the blocking load.
+    void splash();
     // Call once after the save is loaded: takes the Base snapshot.
     void start(EngineHooks& e);
     // One frame: input, logic, render. Returns false when the app must quit.

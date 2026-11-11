@@ -32,6 +32,11 @@ static void shot(const char* name) {
 static void frame(Ui& ui, uint64_t down, uint64_t held) { ui.frame(down, held); SDL_Delay(1); }
 static void press(Ui& ui, uint64_t b, int n = 1) { for (int i = 0; i < n; i++) { frame(ui, b, b); frame(ui, 0, 0); } }
 static void idle(Ui& ui, int n = 3) { for (int i = 0; i < n; i++) frame(ui, 0, 0); }
+// Hold-to-confirm: A held for ~1.7 s of real time (the dialog needs 1.5 s), then released.
+static void holdA(Ui& ui) {
+    for (int i = 0; i < 110; i++) { ui.frame(i == 0 ? HidNpadButton_A : 0, HidNpadButton_A); SDL_Delay(16); }
+    idle(ui, 5);
+}
 
 static uint16_t idOf(const std::vector<Item>& items, const char* name) {
     for (size_t i = 0; i < items.size(); i++) if (items[i].name == name) return (uint16_t)i;
@@ -132,6 +137,8 @@ int main(int argc, char** argv) {
     SDL_Renderer* ren = SDL_CreateSoftwareRenderer(g_surf);
     Ui ui;
     CHECK(ui.init(ren, sd));
+    ui.splash();
+    shot("splash");
     ui.start(h);
     idle(ui);
     shot("pockets-start");
@@ -258,6 +265,139 @@ int main(int argc, char** argv) {
     Ui ui2; ui2.init(ren, sd); ui2.start(f); idle(ui2);
     shot("fatal");
     ui2.shutdown();
+
+    // A still held from the Homebrew Menu must not dismiss the fatal screen; a real press does.
+    {
+        Ui u; u.init(ren, sd); u.start(f);
+        bool stays = true;
+        for (int i = 0; i < 5; i++) stays = stays && u.frame(i == 0 ? A : 0, A);
+        CHECK(stays);
+        CHECK(u.frame(0, 0) && !u.frame(A, A));
+        u.shutdown();
+    }
+
+    // ---------------- Fault injection: every engine hook can fail ----------------
+    {
+        uint8_t pk[POCKETS_BYTES]; memcpy(pk, loadout, sizeof pk);
+        uint32_t vv[4] = { 100, 200, 300, 400 };
+        int applyN = 0, restoreN = 0, doctorN = 0, checkN = 0, copyN = 0;
+        EngineResult applyRes = ER_BACKUP_FAILED, doctorRes = ER_NAND_FAILED;
+        BackupCheck checkRes = BC_OK;
+        bool sessionOk = false, copyOk = false;
+        EngineHooks x = h;
+        x.pockets = pk; x.vals = vv;
+        x.apply = [&]() { applyN++; return applyRes; };
+        x.restore = [&]() { restoreN++; return ER_OK; };
+        x.doctor = [&]() { doctorN++; return doctorRes; };
+        x.checkBackup = [&](bool) { checkN++; return checkRes; };
+        x.writeSessionBackup = [&]() { return sessionOk; };
+        x.sessionToBackup = [&]() { copyN++; return copyOk; };
+        Ui u; u.init(ren, sd); u.start(x); idle(u);
+        auto clearSlot1 = [&]() { press(u, A); press(u, UP); press(u, A); idle(u); };   // cursor on slot 1: "Clear slot" is the last entry
+
+        // Pre-edit backup fails: Cancel writes nothing; "Apply anyway" calls the engine once.
+        clearSlot1();
+        CHECK(slotEmpty(pk, 1));
+        press(u, PLUS); press(u, A); idle(u, 4);
+        shot("fault-pre-edit-backup-failed");
+        press(u, B); idle(u);
+        CHECK(applyN == 0);
+        press(u, A); idle(u, 4); press(u, RIGHT); press(u, A); idle(u, 4);
+        CHECK(applyN == 1);
+        // The engine reported "BAK...": changes stay pending, Base untouched, restore blocked (I6).
+        shot("fault-sd-backup-failed");
+        press(u, A); press(u, B); idle(u);
+        CHECK(slotEmpty(pk, 1));
+        press(u, MINUS); press(u, RIGHT); press(u, A); idle(u);
+        CHECK(!slotEmpty(pk, 1));                               // discard goes back to the real console state
+        press(u, R, 5); press(u, A); idle(u);
+        shot("fault-restore-blocked-untrusted");
+        CHECK(restoreN == 0 && checkN == 0);
+        press(u, A); press(u, L, 5); idle(u);
+
+        // NAND write failed: pending kept, nothing re-based. Then a good Apply re-bases.
+        sessionOk = true; applyRes = ER_NAND_FAILED;
+        clearSlot1();
+        press(u, PLUS); press(u, A); idle(u, 4);
+        CHECK(applyN == 2);
+        press(u, A); idle(u);
+        applyRes = ER_OK;
+        press(u, A); idle(u, 5);
+        CHECK(applyN == 3 && slotEmpty(pk, 1));
+        press(u, MINUS); idle(u);                               // nothing left to discard
+        CHECK(slotEmpty(pk, 1));
+
+        // Backup check fails: the restore block is never reached (I8).
+        checkRes = BC_CORRUPT;
+        press(u, R, 5); press(u, A); idle(u);
+        CHECK(checkN == 1 && restoreN == 0);
+        press(u, A); idle(u);
+        // Pre-edit restore: the copy over backup_*.dat fails => nothing restored, regular restore blocked.
+        checkRes = BC_OK;
+        press(u, DOWN); press(u, A); idle(u); press(u, RIGHT); idle(u);
+        holdA(u);
+        CHECK(copyN == 1 && restoreN == 0);
+        press(u, A); idle(u);
+        int checksBefore = checkN;
+        press(u, UP); press(u, A); idle(u);
+        CHECK(restoreN == 0 && checkN == checksBefore);
+        press(u, A); idle(u);
+        // The copy works on a second try: restored, and the regular backup is trusted again.
+        copyOk = true;
+        press(u, DOWN); press(u, A); idle(u); press(u, RIGHT); idle(u);
+        holdA(u);
+        CHECK(copyN == 2 && restoreN == 1);
+        press(u, UP); press(u, A); idle(u); press(u, RIGHT); idle(u);
+        holdA(u);
+        CHECK(restoreN == 2);
+
+        // Save Doctor fails: the session is locked (I7). No edit, no Apply, no restore, no second Doctor.
+        press(u, DOWN, 2); press(u, A); idle(u); press(u, RIGHT); idle(u);
+        holdA(u);
+        CHECK(doctorN == 1);
+        shot("fault-doctor-failed");
+        press(u, A); idle(u);
+        press(u, A); idle(u); press(u, A); idle(u);              // Doctor again: blocked dialog, closed
+        press(u, UP, 2); press(u, A); idle(u); press(u, A); idle(u);   // restore: blocked
+        CHECK(doctorN == 1 && restoreN == 2);
+        press(u, L, 5); press(u, DOWN); idle(u);
+        uint8_t keep[POCKETS_BYTES]; memcpy(keep, pk, sizeof keep);
+        press(u, A); press(u, UP); press(u, A); idle(u);         // Clear slot 2: refused
+        press(u, A); idle(u);
+        press(u, R, 3); press(u, Y); idle(u); press(u, A); idle(u);     // money stepper: refused
+        CHECK(memcmp(keep, pk, sizeof pk) == 0 && vv[0] == 100 && applyN == 3);
+        u.shutdown();
+    }
+
+    // ---------------- Read-only save (unexpected file sizes, I9) ----------------
+    {
+        uint8_t pk[POCKETS_BYTES]; memcpy(pk, loadout, sizeof pk);
+        uint8_t keep[POCKETS_BYTES]; memcpy(keep, pk, sizeof keep);
+        uint32_t vv[4] = { 100, 200, 300, 400 };
+        int calls = 0;
+        EngineHooks x = h;
+        x.pockets = pk; x.vals = vv; x.editSupported = false;
+        x.apply = [&]() { calls++; return ER_OK; };
+        x.restore = [&]() { calls++; return ER_OK; };
+        x.doctor = [&]() { calls++; return ER_OK; };
+        x.checkBackup = [&](bool) { calls++; return BC_OK; };
+        x.writeSessionBackup = [&]() { calls++; return true; };
+        x.sessionToBackup = [&]() { calls++; return true; };
+        Ui u; u.init(ren, sd); u.start(x); idle(u);
+        shot("read-only");
+        press(u, A); press(u, UP); press(u, A); idle(u); press(u, A);                    // Clear slot
+        press(u, A); press(u, DOWN, 2); press(u, A); idle(u); press(u, A);               // Quantity
+        press(u, R); press(u, Y); press(u, Y); idle(u); press(u, A);                     // take a favorite, place it
+        press(u, R, 3); press(u, Y); idle(u); press(u, A);                               // load a loadout
+        press(u, L); press(u, Y); idle(u); press(u, A);                                  // money stepper
+        press(u, A); press(u, DOWN, 2); press(u, A); idle(u); press(u, A);               // Set to max
+        press(u, R, 2);
+        for (int row = 0; row < 3; row++) { press(u, A); idle(u); press(u, A); press(u, DOWN); }   // restore, pre-edit, Doctor
+        press(u, PLUS); idle(u);
+        CHECK(memcmp(keep, pk, sizeof pk) == 0 && vv[0] == 100 && vv[1] == 200 && vv[2] == 300 && vv[3] == 400);
+        CHECK(calls == 0);
+        u.shutdown();
+    }
 
     ui.shutdown();
     printf("\n%d passed, %d failed\n", g_pass, g_fail);

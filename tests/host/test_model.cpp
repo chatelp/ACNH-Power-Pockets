@@ -251,6 +251,16 @@ static void testLoadoutsFiles() {
     bool untouched = true; for (int i = 0; i < POCKETS_BYTES; i++) if (q[i] != 0xAA) untouched = false;
     CHECK(untouched);                                        // I12
     CHECK(!loadoutRead(path("nope.dat").c_str(), q));
+    // A 160-byte file that is not a pocket snapshot (EXTENSION / 0xFFFF ids) is refused too.
+    uint8_t bad[POCKETS_BYTES]; emptyPockets(bad); putRaw(bad, 5, 0xFFFD, 1, 0, 0);
+    CHECK(!pocketsPlausible(bad) && pocketsPlausible(p));
+    CHECK(loadoutWrite(path("l_2.dat").c_str(), bad));
+    memset(q, 0xAA, sizeof q);
+    CHECK(!loadoutRead(path("l_2.dat").c_str(), q));
+    untouched = true; for (int i = 0; i < POCKETS_BYTES; i++) if (q[i] != 0xAA) untouched = false;
+    CHECK(untouched);
+    memset(bad, 0xFF, sizeof bad);
+    CHECK(!pocketsPlausible(bad));
     CHECK(copyFile(path("l_0.dat").c_str(), path("copy.dat").c_str()) && fileSize(path("copy.dat").c_str()) == 160);
     CHECK(fileSize(path("nope.dat").c_str()) == -1);
 }
@@ -264,6 +274,98 @@ static void testRegions() {
     buf[0] = h & 0xFF; buf[1] = (h >> 8) & 0xFF; buf[2] = (h >> 16) & 0xFF; buf[3] = h >> 24;
     RegionRef r[3] = { { 0, 20 }, { 30, 10 }, { 60, 100 } };
     CHECK(regionsHashOk(buf, sizeof buf, r, 3, fakeHash) == 1);
+}
+
+static void testBackupCheck() {
+    printf("backup check and pre-edit mark\n");
+    uint8_t a[256], b[256];
+    for (int i = 0; i < 256; i++) a[i] = b[i] = (uint8_t)(i * 7);
+    const ByteRange ok[2] = { { 16, 8 }, { 100, 4 } };
+    CHECK(diffOutside(a, b, 256, ok, 2) == 0);
+    for (int i = 16; i < 24; i++) b[i] ^= 0xFF;              // inside an allowed range
+    b[103] ^= 1;
+    CHECK(diffOutside(a, b, 256, ok, 2) == 0);
+    b[15] ^= 1; b[24] ^= 1; b[104] ^= 1; b[255] ^= 1;        // just outside, and the last byte
+    CHECK(diffOutside(a, b, 256, ok, 2) == 4);
+    CHECK(diffOutside(a, b, 256, nullptr, 0) == 13);
+    CHECK(diffOutside(a, nullptr, 256, ok, 2) != 0);
+    CHECK(diffOutside(a, a, 0, ok, 2) == 0);
+
+    std::string s1 = stateSignature(a, 256, b, 256);
+    CHECK(s1.size() == 16 && s1 == stateSignature(a, 256, b, 256));
+    b[200] ^= 1;
+    CHECK(stateSignature(a, 256, b, 256) != s1);              // one bit anywhere changes it
+    b[200] ^= 1;
+    CHECK(stateSignature(a, 255, b, 256) != s1 && stateSignature(b, 256, a, 256) != s1);
+    std::string mp = path("session_mark.txt");
+    CHECK(!stateMarkMatches(mp.c_str(), s1));                 // no file
+    CHECK(writeStateMark(mp.c_str(), s1, true) && stateMarkMatches(mp.c_str(), s1));
+    CHECK(!stateMarkMatches(mp.c_str(), stateSignature(a, 255, b, 256)));
+    CHECK(writeStateMark(mp.c_str(), s1, false) && !stateMarkMatches(mp.c_str(), s1));   // "nopair" never matches
+    writeText(mp, "");
+    CHECK(!stateMarkMatches(mp.c_str(), s1) && !stateMarkMatches(mp.c_str(), ""));
+    writeText(mp, " ok");
+    CHECK(!stateMarkMatches(mp.c_str(), ""));
+}
+
+// Robustness of every parser that reads a user-editable SD file: random and mutated
+// inputs must never crash, read out of bounds (ASan/UBSan) or break the invariants.
+static uint32_t g_seed = 12345;
+static uint32_t rnd() { g_seed ^= g_seed << 13; g_seed ^= g_seed >> 17; g_seed ^= g_seed << 5; return g_seed; }
+static void writeBytes(const std::string& p, const std::string& d) { FILE* f = fopen(p.c_str(), "wb"); if (!d.empty()) fwrite(d.data(), 1, d.size(), f); fclose(f); }
+
+static void testFuzzParsers() {
+    printf("fuzz: user_favorites.txt, nonstackable.txt, loadouts, mark\n");
+    std::vector<Item> items = makeItems();
+    const std::string fp = path("fuzz_favs.txt"), np = path("fuzz_ns.txt"), lp = path("fuzz_lo.dat"), mp = path("fuzz_mark.txt");
+    const char* seeds[] = { "+0002 Nook Miles Ticket\n-0004 gold roses\n# end\n", "~wand\n-Wandering\n0x0001\ngolden axe\n# c\n",
+                            "+", "-", "+000", "+0002", "+0002x", "0x", "0xZZZZ", "~", "-~", "--", "# end", "\r\n\r\n", "+FFFF a\n+FFFE b\n+FFFD c\n" };
+    const int nSeeds = (int)(sizeof(seeds) / sizeof(seeds[0]));
+    bool ok = true;
+    for (int it = 0; it < 3000 && ok; it++) {
+        std::string d;
+        int mode = (int)(rnd() % 3);
+        if (mode == 0) {                                       // pure noise, sometimes very long lines
+            size_t n = rnd() % 2000;
+            for (size_t i = 0; i < n; i++) d += (char)(rnd() % 256);
+        } else if (mode == 1) {                                // text-like noise built from the grammar's alphabet
+            static const char alpha[] = "+-~#0xX123456789abcdefABCDEF \t\r\n\ngoldenaxewand";
+            size_t n = rnd() % 600;
+            for (size_t i = 0; i < n; i++) d += alpha[rnd() % (sizeof(alpha) - 1)];
+        } else {                                               // mutated valid file
+            d = seeds[rnd() % nSeeds];
+            for (int k = (int)(rnd() % 4); k > 0 && !d.empty(); k--) {
+                size_t at = rnd() % d.size();
+                switch (rnd() % 3) { case 0: d[at] = (char)(rnd() % 256); break; case 1: d.erase(at, 1); break; default: d.insert(at, 1, (char)(rnd() % 256)); }
+            }
+            for (int k = (int)(rnd() % 3); k > 0; k--) d += d;
+        }
+        writeBytes(fp, d); writeBytes(np, d); writeBytes(lp, d); writeBytes(mp, d);
+        if (rnd() % 4 == 0) writeBytes(fp + ".tmp", d); else ::remove((fp + ".tmp").c_str());
+
+        Favorites f; f.load(items, BUILTIN, 4, fp);
+        if ((int)f.list().size() > FAV_LIMIT) ok = false;
+        for (size_t i = 0; i < f.list().size(); i++) {         // every favorite is a real, named item
+            uint16_t id = f.list()[i].id;
+            if (id >= items.size() || items[id].name.empty()) ok = false;
+            if (i > 0 && f.list()[i - 1].id == id) ok = false;
+        }
+        StackRules r; r.build(items, np.c_str());
+        if (r.singleCount() > (int)items.size() || r.isSingle(0xFFFF) || r.isSingle((uint16_t)items.size())) ok = false;
+        uint8_t q[POCKETS_BYTES]; memset(q, 0xAA, sizeof q);
+        if (loadoutRead(lp.c_str(), q)) { if (!pocketsPlausible(q)) ok = false; }
+        else for (int i = 0; i < POCKETS_BYTES; i++) if (q[i] != 0xAA) ok = false;
+        stateMarkMatches(mp.c_str(), "0123456789abcdef");
+        uint16_t id = 0; parseHexId(d, id); searchItems(items, d.substr(0, 40));
+        if (!ok) printf("  fuzz failure at iteration %d\n", it);
+    }
+    CHECK(ok);
+    // The app's own rewrite after loading garbage must give a file it reads back identically.
+    writeBytes(fp, "garbage\n+0003 x\n\xff\xfe\n-0004\n"); ::remove((fp + ".tmp").c_str());
+    Favorites f; f.load(items, BUILTIN, 4, fp);
+    CHECK(f.add(2) == Favorites::ADDED);
+    Favorites g; g.load(items, BUILTIN, 4, fp);
+    CHECK(g.ignoredLines() == 0 && g.list().size() == f.list().size() && g.isFav(2) && g.isFav(3) && !g.isFav(4));
 }
 
 int main() {
@@ -283,6 +385,8 @@ int main() {
     testFavorites();
     testLoadoutsFiles();
     testRegions();
+    testBackupCheck();
+    testFuzzParsers();
 
     printf("\n%d passed, %d failed\n", g_pass, g_fail);
     return g_fail ? 1 : 0;
