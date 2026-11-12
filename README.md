@@ -4,7 +4,7 @@
 > **This tool writes directly to your Animal Crossing: New Horizons save. It can corrupt it, and a corrupted island may be impossible to recover.**
 >
 > - **Back up your save with [JKSV](https://github.com/J-D-K/JKSV) or [Checkpoint](https://github.com/BernardoGiordano/Checkpoint) before every editing session, and copy that backup to a computer.** The app's own SD backups are a safety net, not a replacement.
-> - **Tested on one console and one save only (game 3.0.3).** The very first test was refused by the game as corrupted: one integrity hash had not been updated. Version 1.0.0 recomputes them, and its edits were then accepted by the game. That is a single island: do the [first-use test](#first-use-test) on a save you can afford to lose before touching yours.
+> - **Tested on one console and one save only (game 3.0.3).** The very first test was refused by the game as corrupted: one integrity hash had not been updated. Version 1.0.0 recomputes them, and its edits were then accepted by the game. Stack quantities were checked too (9 tickets placed, 9 in the game). That is still a single island: do the [first-use test](#first-use-test) on a save you can afford to lose before touching yours.
 > - Offline use only. Editing saves can get you into trouble online and may break Nintendo's terms of service. Never trade edited or unreleased items with other players.
 > - Provided **as is, with no warranty of any kind** (MIT license). You alone are responsible for what happens to your save, your console and your accounts. Not affiliated with or endorsed by Nintendo.
 
@@ -77,14 +77,14 @@ Restoring a backup and the Save Doctor write to the console right away. They liv
 
 ## First-use test
 
-Do this once, with a save you can afford to lose. It answers two questions nobody has checked yet on this version: does the game accept a save written by this tool, and how does the game count stacks?
+Do this once, with a save you can afford to lose. It checks, on your console and your game version, the two things verified so far on a single island: the game accepts a save written by this tool, and stack quantities come out exactly as set.
 
 1. Back up the save with JKSV or Checkpoint and copy the backup to a computer.
 2. Launch Power Pockets. Put **Nook Miles Ticket** in an **empty** slot with quantity **9** (*Favorites* › *Take with quantity…* › 9, then **Y** in *Pockets*). Press **+**, then **Apply**. Change nothing else. Use a real stackable item: "gold bars", for instance, is a piece of furniture (the stackable material is "gold nugget").
 3. Start the game:
    - **The save doesn't load, or the game offers to restore it:** stop. Restore your JKSV/Checkpoint backup and [report it](../../issues/new?template=bug_report.yml) with your game version.
-   - **You get 10 tickets:** the game stores "quantity − 1". Displayed quantities are off by one until `kCountZeroBased` is set to `true` in `source/pp_model.h`. Please report it.
-   - **You get 9 tickets:** quantities are exact.
+   - **You get 9 tickets:** all good, quantities are exact (this is what happened on ACNH 3.0.3).
+   - **Any other number:** please [report it](../../issues/new?template=test_report.yml), with your game version.
 4. Save in the game, quit, reopen Power Pockets and look at **System › Info › Region hashes**. It should read `personal 2/2 · main 19/19`. Report it if it doesn't.
 
 ## Install
@@ -162,8 +162,7 @@ Power Pockets has its own file name and its own folder (`switch/acnh_power_pocke
 
 ## Known limitations
 
-- **Not confirmed in the game yet.** The game protects each region of the save with a hash and refuses the whole save when one is stale. Power Pockets now recomputes all 21 before writing (upstream's unreleased source, which this fork started from, had stopped doing it). This is verified on real dumps, not yet by the game itself. System › Info shows how many hashes match.
-- **Quantity convention unconfirmed:** see the [first-use test](#first-use-test).
+- **One island tested so far.** The game protects each region of the save with a hash and refuses the whole save when one is stale. Power Pockets recomputes all 21 before writing (upstream's unreleased source, which this fork started from, had stopped doing it). Saves written this way were accepted by the game on ACNH 3.0.3, but on one console only. System › Info shows how many hashes match.
 - **Slow start on a save with a stale hash.** If a save was written without its hashes (by an earlier build of this app, for instance), the inherited engine rescans the files at launch. The "Reading the save…" screen can then stay up for tens of seconds, or minutes (estimates, not measured on a console). It is not frozen: wait, then run the Save Doctor.
 - **Only the primary resident** (`Villager0`) and **only the 20 pocket slots** (not the bag expansion).
 - **Save versions 3.0.x only**; anything else is read-only.

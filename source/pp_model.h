@@ -38,9 +38,10 @@ static const int      FAV_LIMIT      = 64;
 static const uint32_t WALLET_GAME_MAX = 99999;                  // warning only, bound unchanged
 
 // Quantity convention of the +4 field.
-// false = upstream behaviour: the number shown is the raw value written.
-// true  = NHSE convention: raw = quantity - 1 (0 means one item).
-// Decide after the in-game "Phase 0" test (see README / plan) and flip here only.
+// false = the number shown is the raw value written (upstream behaviour).
+// true  = raw = quantity - 1 (0 means one item).
+// Settled by the console test of 2026-11-12 (ACNH 3.0.3): 9 Nook Miles Tickets placed
+// with raw 9 showed as 9 in the game, so the raw value is the quantity. Keep false.
 static const bool kCountZeroBased = false;
 
 uint16_t qtyToRaw(int qty);          // qty clamped to QTY_MIN..QTY_MAX first
