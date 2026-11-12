@@ -53,7 +53,7 @@ int main(int argc, char** argv) {
     const std::string root = argv[1];
     g_out = argv[2];
     const std::string sd = g_out + "/sd/";
-    const char* assets[] = { "font.ttf", "icon.png", "ui_icons.png", "nonstackable.txt", "item_glyphs.png", "item_glyphs.txt" };
+    const char* assets[] = { "font.ttf", "icon.png", "ui_icons.png", "nonstackable.txt", "item_glyphs.png", "item_glyphs.txt", "item_stacks.txt" };
     for (const char* a : assets) copyFile((root + "/assets/" + a).c_str(), (sd + a).c_str());
 
     std::vector<Item> items;
@@ -72,36 +72,37 @@ int main(int argc, char** argv) {
     favs.load(items, FAV_NAMES, 22, sd + "user_favorites.txt");
     favs.add(I("red roses")); favs.add(I("sea bass")); favs.add(I("wood"));
     glyphs.build(items, (sd + "item_glyphs.txt").c_str());
-    stack.build(items, (sd + "nonstackable.txt").c_str(), &glyphs);
+    StackLimits limits; limits.load((sd + "item_stacks.txt").c_str(), items.size());
+    stack.build(items, (sd + "nonstackable.txt").c_str(), &glyphs, &limits);
 
     // The "console" pockets: a bit of everything, five free slots.
     uint8_t pockets[POCKETS_BYTES]; clearAll(pockets);
     put(pockets, 1, I("golden axe"), 0);          put(pockets, 2, I("fishing rod"), 0);
-    put(pockets, 3, I("shovel"), 0);              put(pockets, 4, I("red roses"), 10);
-    put(pockets, 5, I("white tulips"), 10);       put(pockets, 6, I("blue hyacinths"), 5);
-    put(pockets, 7, I("cherry"), 10);             put(pockets, 8, I("peach"), 10);
-    put(pockets, 9, I("sea bass"), 1);            put(pockets, 10, I("wood"), 30);
-    put(pockets, 11, I("iron nugget"), 30);       put(pockets, 12, I("star fragment"), 5);
-    put(pockets, 13, I("straw hat (Red)"), 1);    put(pockets, 14, I("denim jacket (Blue)"), 1);
-    put(pockets, 15, I("rain boots (Yellow)"), 1);
+    put(pockets, 3, I("shovel"), 0);              put(pockets, 4, I("red roses"), 9);
+    put(pockets, 5, I("white tulips"), 9);       put(pockets, 6, I("blue hyacinths"), 4);
+    put(pockets, 7, I("cherry"), 9);             put(pockets, 8, I("peach"), 9);
+    put(pockets, 9, I("sea bass"), 0);            put(pockets, 10, I("wood"), 29);
+    put(pockets, 11, I("iron nugget"), 29);       put(pockets, 12, I("star fragment"), 4);
+    put(pockets, 13, I("straw hat (Red)"), 0);    put(pockets, 14, I("denim jacket (Blue)"), 0);
+    put(pockets, 15, I("rain boots (Yellow)"), 0);
     uint32_t vals[4] = { 12345, 4800000, 230500, 98000 };
 
     uint8_t lo[POCKETS_BYTES];
     clearAll(lo);
-    put(lo, 1, I("golden axe"), 0); put(lo, 2, I("shovel"), 0); put(lo, 3, I("iron nugget"), 30); put(lo, 4, I("wood"), 30);
-    put(lo, 5, I("star fragment"), 5); put(lo, 6, I("cherry"), 10); put(lo, 11, I("pearl"), 3);
+    put(lo, 1, I("golden axe"), 0); put(lo, 2, I("shovel"), 0); put(lo, 3, I("iron nugget"), 29); put(lo, 4, I("wood"), 29);
+    put(lo, 5, I("star fragment"), 4); put(lo, 6, I("cherry"), 9); put(lo, 11, I("pearl"), 2);
     loadoutWrite((sd + "l_0.dat").c_str(), lo);
     clearAll(lo);
-    put(lo, 1, I("fishing rod"), 0); put(lo, 2, I("sea bass"), 1); put(lo, 3, I("peach"), 10);
+    put(lo, 1, I("fishing rod"), 0); put(lo, 2, I("sea bass"), 0); put(lo, 3, I("peach"), 9);
     loadoutWrite((sd + "l_1.dat").c_str(), lo);
     for (int i = 2; i < 5; i++) remove((sd + "l_" + std::to_string(i) + ".dat").c_str());
 
     bool preEdit = false, applied = false;
     std::deque<std::string> keyboard;
     EngineHooks h;
-    h.pockets = pockets; h.vals = vals; h.items = &items; h.favorites = &favs; h.stack = &stack; h.glyphs = &glyphs;
+    h.pockets = pockets; h.vals = vals; h.items = &items; h.favorites = &favs; h.stack = &stack; h.limits = &limits; h.glyphs = &glyphs;
     h.saveReady = true; h.editSupported = true; h.loadoutNames = LOADOUT_NAMES; h.loadoutCount = 5;
-    h.sdDir = sd; h.version = "1.0.0";
+    h.sdDir = sd; h.version = "1.0.1";
     h.apply = [&]() { applied = true; return ER_OK; };
     h.restore = [&]() { return ER_OK; };
     h.doctor = [&]() { return ER_OK; };

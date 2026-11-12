@@ -1,7 +1,7 @@
 {
   "name": "ACNH Power Pockets",
   "author": "Power Pockets fork of cbreezy210",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "category": "tool",
   "description": "Inventory-focused fork of ACNH Save Editor: panels, prepare-then-apply edits, fast slot filling, favorites managed in the app, 1/slot items flagged. Same save engine, SD backups and Save Doctor, in its own SD folder.",
   "url": "https://github.com/chatelp/ACNH-Power-Pockets",

@@ -36,7 +36,7 @@ body:
     attributes:
       label: Power Pockets version
       description: Shown in System › Info › Version.
-      placeholder: "1.0.0"
+      placeholder: "1.0.1"
     validations:
       required: true
   - type: input

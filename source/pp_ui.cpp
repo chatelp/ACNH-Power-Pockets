@@ -173,6 +173,14 @@ struct Ui::Impl {
     const std::vector<Item>& items() const { static std::vector<Item> none; return (e && e->items) ? *e->items : none; }
     bool itemsLoaded() const { return !items().empty(); }
     bool single(uint16_t id) const { return e && e->stack && e->stack->isSingle(id); }
+    int  maxQty(uint16_t id) const { return e && e->stack ? e->stack->maxQty(id) : QTY_MAX; }
+    bool overMax(uint16_t id, uint16_t raw) const { return e && e->stack && e->stack->overMax(id, raw); }
+    // Detail-line note: "doesn't stack", "stacks to 30", or nothing when the limit is unknown.
+    std::string stackNote(uint16_t id) const {
+        if (single(id)) return S::DOESNT_STACK;
+        int m = maxQty(id);
+        return m < QTY_MAX || (e && e->limits && e->limits->maxOf(id) >= QTY_MAX) ? fmt(S::STACKS_TO_FMT, m) : std::string();
+    }
     int pending() const { return ready() ? pendingCount(base, e->pockets, e->vals) : 0; }
 
     std::string itemName(uint16_t id) const {
@@ -182,7 +190,7 @@ struct Ui::Impl {
         return fmt("ID %04X", (unsigned)id);
     }
     std::string qtyText(uint16_t id, uint16_t raw) const {
-        if (single(id)) return rawToQty(raw) > 1 ? fmt("%s%d", S::TIMES, rawToQty(raw)) : std::string();
+        if (single(id)) return std::string();      // +4 is a variant there, not a count
         return fmt("%s%d", S::TIMES, rawToQty(raw));
     }
     std::string slotText(const uint8_t* pockets, int slot) const {
@@ -466,7 +474,8 @@ struct Ui::Impl {
             std::string q = qtyText(rec.id, rec.raw);
             if (!q.empty()) {
                 rx -= textR(fSmall, q, foc ? C::selectInk : C::textSecond, rx, r.y + (CELL_H - fontH(fSmall)) / 2) + 8;
-                if (single(rec.id)) {                       // quantity > 1 on a non-stackable: shown as-is, flagged
+                // More than the game's stack limit: shown as-is, flagged, never changed by itself.
+                if (overMax(rec.id, rec.raw)) {
                     if (icons) { icon(IC_WARN, rx - 20, r.y + 8); rx -= 28; }
                 }
             }
@@ -485,7 +494,9 @@ struct Ui::Impl {
             d += S::DOT + itemName(r.id) + S::DOT + fmt("0x%04X", (unsigned)r.id);
             std::string q = qtyText(r.id, r.raw);
             if (!q.empty()) d += S::DOT + q;
-            if (single(r.id)) d += S::DOT + std::string(S::DOESNT_STACK);
+            if (overMax(r.id, r.raw)) d += S::DOT + fmt(S::OVER_MAX_FMT, maxQty(r.id));
+            else { std::string n = stackNote(r.id); if (!n.empty()) d += S::DOT + n; }
+            if (single(r.id) && r.raw) d += S::DOT + fmt(S::VARIANT_FMT, (int)r.raw);
         } else d += S::DOT + std::string(S::EMPTY);
         if (slotModified(base, e->pockets, s)) d += S::DOT + std::string("was ") + slotText(base.pockets, s);
         return d;
@@ -513,14 +524,15 @@ struct Ui::Impl {
     void takeFromSlot(int slot) {
         SlotRec r = readSlot(e->pockets, slot);
         if (r.id == ID_EMPTY) return;
-        int q = single(r.id) ? 1 : std::max(QTY_MIN, std::min(QTY_MAX, rawToQty(r.raw)));
+        int q = std::max(QTY_MIN, std::min(maxQty(r.id), rawToQty(r.raw)));
         setHand(r.id, q, false);
     }
     void setHand(uint16_t id, int qty, bool goPockets) {
-        bool clamped = single(id) && qty > 1;
-        hand.valid = true; hand.id = id; hand.qty = single(id) ? 1 : std::max(QTY_MIN, std::min(QTY_MAX, qty));
+        const int cap = maxQty(id);
+        hand.valid = true; hand.id = id; hand.qty = std::max(QTY_MIN, std::min(cap, qty));
         if (goPockets) panel = P_POCKETS;
-        if (clamped) setToast(T_WARN, S::T_QTY_ONE);
+        if (qty > cap && single(id)) setToast(T_WARN, S::T_QTY_ONE);
+        else if (qty > cap) setToast(T_WARN, fmt(S::T_QTY_CAP_FMT, cap));
         else setToast(T_INFO, fmt(S::T_HOLDING_FMT, handText().c_str()));
     }
     void pocketsQuick(int slot) {
@@ -528,9 +540,13 @@ struct Ui::Impl {
         if (!slotEmpty(e->pockets, slot)) { takeFromSlot(slot); return; }
         setToast(T_INFO, S::T_NOTHING_HELD);
     }
-    void openQtyStepper(const std::string& title, int initial, std::function<void(int64_t)> ok) {
+    // `maxV` is the item's largest stack (StackRules::maxQty). `was` is shown as the
+    // current value (0 = `initial`): the real count of a stack above the limit.
+    void openQtyStepper(const std::string& title, int initial, int maxV, std::function<void(int64_t)> ok, int was = 0) {
         Modal m; m.kind = Modal::STEPPER; m.title = title;
-        m.value = m.original = initial; m.minV = QTY_MIN; m.maxV = QTY_MAX; m.small = 1; m.big = 10; m.money = false;
+        m.value = std::max(QTY_MIN, std::min(maxV, initial));
+        m.original = was > 0 ? was : m.value;
+        m.minV = QTY_MIN; m.maxV = maxV; m.small = 1; m.big = 10; m.money = false;
         m.onOk = ok;
         push(m);
     }
@@ -558,18 +574,20 @@ struct Ui::Impl {
         if (occ && !single(r.id)) qt.detail = qtyText(r.id, r.raw);
         qt.run = [this, slot, r]() {
             if (!canEdit()) return;
-            const int shown = std::max(QTY_MIN, std::min(QTY_MAX, rawToQty(r.raw)));
-            // Confirming without moving is not a change, even when the stored count is
-            // outside 1..99 and was clamped for display.
-            openQtyStepper(std::string(S::M_QTY) + " " + itemName(r.id), shown,
-                           [this, slot, shown](int64_t v) { if ((int)v != shown) setSlotRaw(e->pockets, slot, qtyToRaw((int)v)); dirty = true; });
+            const int shown = std::max(QTY_MIN, std::min(maxQty(r.id), rawToQty(r.raw)));
+            // Confirming without moving is not a change, except for a stack above the
+            // item's limit: the stepper starts at the limit and confirming writes it.
+            const bool over = overMax(r.id, r.raw);
+            openQtyStepper(std::string(S::M_QTY) + " " + itemName(r.id), shown, maxQty(r.id),
+                           [this, slot, shown, over](int64_t v) { if ((int)v != shown || over) setSlotRaw(e->pockets, slot, qtyToRaw((int)v)); dirty = true; },
+                           rawToQty(r.raw));
         };
         m.entries.push_back(qt);
         MenuEntry hq; hq.label = S::M_HELD_QTY; hq.enabled = hand.valid && !single(hand.id);
         hq.reason = !hand.valid ? S::R_NOTHING_HELD : S::R_SINGLE;
         if (hq.enabled) hq.detail = fmt("%s%d", S::TIMES, hand.qty);
         hq.run = [this]() {
-            openQtyStepper(S::M_HELD_QTY, hand.qty, [this](int64_t v) { hand.qty = (int)v; dirty = true; });
+            openQtyStepper(S::M_HELD_QTY, hand.qty, maxQty(hand.id), [this](int64_t v) { hand.qty = (int)v; dirty = true; });
         };
         m.entries.push_back(hq);
         MenuEntry id; id.label = S::M_ENTER_ID;
@@ -734,12 +752,12 @@ struct Ui::Impl {
     void takeMenu(uint16_t id, bool fromFavs) {
         Modal m; m.kind = Modal::MENU; m.title = itemName(id) + S::DOT + fmt("0x%04X", (unsigned)id);
         MenuEntry tk; tk.label = S::M_TAKE_FAV; tk.isDefault = true;
-        tk.detail = single(id) ? std::string(S::BADGE_SINGLE) : fmt("%s%d", S::TIMES, hand.valid ? hand.qty : 1);
+        tk.detail = single(id) ? std::string(S::BADGE_SINGLE) : fmt("%s%d", S::TIMES, std::min(maxQty(id), hand.valid ? hand.qty : 1));
         tk.run = [this, id]() { setHand(id, hand.valid ? hand.qty : 1, true); };
         m.entries.push_back(tk);
         MenuEntry tq; tq.label = S::M_TAKE_QTY; tq.enabled = !single(id); tq.reason = S::R_SINGLE;
         tq.run = [this, id]() {
-            openQtyStepper(std::string(S::M_TAKE_QTY), hand.valid ? hand.qty : 1, [this, id](int64_t v) { setHand(id, (int)v, true); });
+            openQtyStepper(std::string(S::M_TAKE_QTY), hand.valid ? hand.qty : 1, maxQty(id), [this, id](int64_t v) { setHand(id, (int)v, true); });
         };
         m.entries.push_back(tq);
         bool fav = e->favorites && e->favorites->isFav(id);
@@ -1059,8 +1077,11 @@ struct Ui::Impl {
         std::string ns = e->stack ? fmt("%d items", e->stack->singleCount()) : std::string("-");
         if (e->stack && e->stack->fileIgnored()) ns += fmt(" \xC2\xB7 %d rule%s ignored", e->stack->fileIgnored(), plural(e->stack->fileIgnored()));
         L.push_back({ "1/slot", ns });
+        std::string sl = (e->limits && e->limits->loaded()) ? fmt("%d items", e->limits->known()) : std::string("item_stacks.txt missing (1..99)");
+        if (e->limits && e->limits->ignoredLines()) sl += fmt(" \xC2\xB7 %d line%s ignored", e->limits->ignoredLines(), plural(e->limits->ignoredLines()));
+        L.push_back({ "Stack limits", sl });
         for (size_t i = 0; i < L.size(); i++) {
-            int y = pv.y + 56 + (int)i * 34;
+            int y = pv.y + 56 + (int)i * 32;
             text(fSmall, L[i].first, C::textSecond, pv.x + 20, y);
             text(fSmall, fit(fSmall, L[i].second, 340), C::textPrimary, pv.x + 184, y);
         }
@@ -1532,7 +1553,8 @@ struct Ui::Impl {
                 if (focus[P_CATALOG] > 0 && focus[P_CATALOG] <= (int)results.size()) {
                     uint16_t id = (uint16_t)results[focus[P_CATALOG] - 1];
                     d = itemName(id) + S::DOT + fmt("0x%04X", (unsigned)id);
-                    if (single(id)) d += S::DOT + std::string(S::DOESNT_STACK);
+                    std::string n = stackNote(id);
+                    if (!n.empty()) d += S::DOT + n;
                 }
                 break;
             case P_MONEY: {

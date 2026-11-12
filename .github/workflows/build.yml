@@ -27,6 +27,14 @@ jobs:
       - name: Pillow
         run: python3 -m pip install --quiet pillow
         timeout-minutes: 3
+      # item_stacks.txt must be exactly what the script makes from the pinned NHSE files.
+      - name: Stack limits match NHSE
+        run: |
+          base=https://raw.githubusercontent.com/kwsch/NHSE/cb0745415945776f73375bf0a434a8babf059307
+          for f in NHSE.Core/Structures/Item/ItemKind.cs NHSE.Core/Structures/Item/ItemInfo.cs NHSE.Core/Resources/byte/item_kind.bin; do
+            mkdir -p "nhse/$(dirname "$f")" && curl -fsSL "$base/$f" -o "nhse/$f"
+          done
+          python3 tools/make_item_stacks.py nhse --check
       - name: Host tests
         run: CXX=clang++ sh tests/host/run.sh
       # Real main.cpp on a fake console (synthetic save, injected failures).
@@ -52,7 +60,7 @@ jobs:
           mkdir -p dist/switch/acnh_power_pockets
           cp acnh_power_pockets.nro icon.png dist/switch/acnh_power_pockets/
           cp assets/font.ttf assets/items.txt assets/ui_icons.png assets/nonstackable.txt dist/switch/acnh_power_pockets/
-          cp assets/item_glyphs.png assets/item_glyphs.txt dist/switch/acnh_power_pockets/
+          cp assets/item_glyphs.png assets/item_glyphs.txt assets/item_stacks.txt dist/switch/acnh_power_pockets/
           cp LICENSE THIRD_PARTY_NOTICES.md dist/switch/acnh_power_pockets/
           cp -R licenses dist/switch/acnh_power_pockets/
       - uses: actions/upload-artifact@v4

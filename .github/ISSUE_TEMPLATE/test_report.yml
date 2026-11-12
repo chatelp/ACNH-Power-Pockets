@@ -23,7 +23,7 @@ body:
       label: You placed 9 Nook Miles Tickets. How many did the game show?
       options:
         - "9"
-        - "10"
+        - "10 (version 1.0.0: known bug, fixed in 1.0.1)"
         - "Another number (explain below)"
         - "I placed something else (explain below)"
     validations:
@@ -37,7 +37,7 @@ body:
     id: app_version
     attributes:
       label: Power Pockets version
-      placeholder: "1.0.0"
+      placeholder: "1.0.1"
     validations:
       required: true
   - type: input

@@ -348,10 +348,12 @@ int main(int argc, char** argv) {
     pp::Favorites favorites;
     pp::StackRules stackRules;
     pp::GlyphMap glyphMap;                // item pictures, and which kinds of items never stack
+    pp::StackLimits stackLimits;          // largest stack the game allows, per item
     auto reloadLists = [&]() {
         favorites.load(g_allItems, FAV_NAMES, FAV_MAX, sdDir + "user_favorites.txt");
         glyphMap.build(g_allItems, (sdDir + "item_glyphs.txt").c_str());       // before the 1/slot rules: they use its item kinds
-        stackRules.build(g_allItems, (sdDir + "nonstackable.txt").c_str(), &glyphMap);
+        stackLimits.load((sdDir + "item_stacks.txt").c_str(), g_allItems.size());
+        stackRules.build(g_allItems, (sdDir + "nonstackable.txt").c_str(), &glyphMap, &stackLimits);
     };
     reloadLists();
 
@@ -675,6 +677,7 @@ int main(int argc, char** argv) {
     hooks.items = &g_allItems;
     hooks.favorites = &favorites;
     hooks.stack = &stackRules;
+    hooks.limits = &stackLimits;
     hooks.glyphs = &glyphMap;
     hooks.saveReady = saveReady;
     hooks.editSupported = editSupported;

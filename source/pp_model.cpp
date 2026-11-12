@@ -266,8 +266,10 @@ bool StackRules::applyRule(const std::vector<Item>& items, const std::string& ra
     return any;
 }
 
-void StackRules::build(const std::vector<Item>& items, const char* userPath, const GlyphMap* glyphs) {
+void StackRules::build(const std::vector<Item>& items, const char* userPath, const GlyphMap* glyphs,
+                       const StackLimits* limits) {
     flags_.assign(items.size(), 0);
+    limit_.assign(items.size(), 0);
     fileRules_ = fileIgnored_ = 0;
     fileFound_ = false;
     for (size_t i = 0; i < sizeof(BUILTIN_SINGLE_RULES) / sizeof(BUILTIN_SINGLE_RULES[0]); i++)
@@ -277,6 +279,14 @@ void StackRules::build(const std::vector<Item>& items, const char* userPath, con
     if (glyphs && glyphs->loaded())
         for (size_t i = 0; i < items.size(); i++)
             if (glyphs->singleKind((uint16_t)i)) flags_[i] = 1;
+    // The game's own limits, when known, settle it: 1 never stacks, more always stacks.
+    if (limits && limits->loaded())
+        for (size_t i = 0; i < items.size(); i++) {
+            int m = limits->maxOf((uint16_t)i);
+            limit_[i] = (uint8_t)m;
+            if (m == 1) flags_[i] = 1;
+            else if (m > 1) flags_[i] = 0;
+        }
     if (!userPath) return;
     FILE* f = fopen(userPath, "rb");
     if (!f) return;                                            // optional file: silent
@@ -293,6 +303,58 @@ void StackRules::build(const std::vector<Item>& items, const char* userPath, con
 }
 
 bool StackRules::isSingle(uint16_t id) const { return id < flags_.size() && flags_[id] != 0; }
+int StackRules::maxQty(uint16_t id) const {
+    if (isSingle(id)) return 1;
+    int m = id < limit_.size() ? limit_[id] : 0;
+    return m > 1 ? (m < QTY_MAX ? m : QTY_MAX) : QTY_MAX;
+}
+bool StackRules::overMax(uint16_t id, uint16_t raw) const {
+    return !isSingle(id) && rawToQty(raw) > maxQty(id);
+}
+
+// ------------------------------ stack limits -------------------------------
+bool StackLimits::applyLine(const std::string& raw) {
+    std::string line = trim(raw);
+    if (line.empty() || line[0] == '#') return true;
+    size_t sp = line.find_first_of(" \t");
+    if (sp == std::string::npos) return false;
+    std::string range = line.substr(0, sp), val = trim(line.substr(sp + 1));
+    size_t dash = range.find('-');
+    uint16_t a = 0, b = 0;
+    if (!parseHexId(range.substr(0, dash), a)) return false;
+    if (dash == std::string::npos) b = a;
+    else if (!parseHexId(range.substr(dash + 1), b)) return false;
+    if (b < a || val.empty() || val.size() > 3) return false;
+    int v = 0;
+    for (size_t i = 0; i < val.size(); i++) {
+        if (val[i] < '0' || val[i] > '9') return false;
+        v = v * 10 + (val[i] - '0');
+    }
+    if (v < 1 || v > 255) return false;
+    for (uint32_t i = a; i <= b && i < max_.size(); i++) max_[i] = (uint8_t)v;
+    return true;
+}
+bool StackLimits::load(const char* path, size_t itemCount) {
+    max_.assign(itemCount, 0);
+    loaded_ = false;
+    ignored_ = 0;
+    FILE* f = path ? fopen(path, "rb") : nullptr;
+    if (!f) return false;
+    char line[256];
+    int lines = 0;
+    while (fgets(line, sizeof line, f) && lines < 65536) {
+        lines++;
+        if (!applyLine(line)) ignored_++;
+    }
+    fclose(f);
+    loaded_ = true;
+    return true;
+}
+int StackLimits::known() const {
+    int n = 0;
+    for (size_t i = 0; i < max_.size(); i++) if (max_[i]) n++;
+    return n;
+}
 int StackRules::singleCount() const {
     int n = 0;
     for (size_t i = 0; i < flags_.size(); i++) if (flags_[i]) n++;

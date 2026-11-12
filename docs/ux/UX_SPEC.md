@@ -273,7 +273,7 @@ Notation : `R` = appui sur R, `Ⓐ→«X»` = A ouvre le menu d'actions puis cho
 > **Révision après validation du plan (implémentée dans la v1.0.0) — elle remplace la décision ci-dessous.**
 > On ne pose **jamais** sur un slot occupé. **Y = poser l'item en main dans le prochain slot *vide*** à partir du slot focalisé (avec bouclage 20 → 1), puis le focus passe au slot vide suivant : 10 appuis remplissent les 10 prochains slots vides sans jamais écraser un item. « Poser ici » est supprimé (Y pose déjà dans le slot focalisé s'il est vide). Pour remplacer un item : « Vider le slot » puis Y.
 > La pose écrit l'enregistrement propre `{id, 0, 0, quantité, 0}` ; « Vider » écrit l'enregistrement vide NHSE `FE FF 00 00 00 00 00 00` (règle des 8 octets du § 6.2 révisée en conséquence : plus d'octets hérités, puisque seuls des slots vides sont écrits).
-> Non empilable : valeur brute 0 écrite à la pose (et non 1, cf. audit point i). Convention de quantité centralisée dans `kCountZeroBased` (`source/pp_model.h`), à trancher après le test console.
+> Non empilable : valeur brute 0 écrite à la pose (et non 1, cf. audit point i). Convention de quantité centralisée dans `kCountZeroBased` (`source/pp_model.h`) : **tranchée le 12/11/2026, `true`** (9 tickets écrits en brut 9 donnaient 10 en jeu). Depuis la v1.0.1, le pas de quantité est aussi borné par la pile max de chaque objet (`item_stacks.txt`, tiré de NHSE).
 
 **Décision initiale (remplacée) : Y sur un slot = poser l'item en main puis avancer automatiquement au slot suivant.** La variante sans avance existe dans le menu (« Poser ici »).
 

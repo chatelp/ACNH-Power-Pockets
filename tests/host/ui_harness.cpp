@@ -66,6 +66,7 @@ int main(int argc, char** argv) {
     copy(root + "/assets/nonstackable.txt", sd + "nonstackable.txt");
     copy(root + "/assets/item_glyphs.png", sd + "item_glyphs.png");
     copy(root + "/assets/item_glyphs.txt", sd + "item_glyphs.txt");
+    copy(root + "/assets/item_stacks.txt", sd + "item_stacks.txt");
 
     // items.txt, exactly like main.cpp loads it
     std::vector<Item> items;
@@ -83,7 +84,10 @@ int main(int argc, char** argv) {
     favs.load(items, FAV_NAMES, 22, sd + "user_favorites.txt");
     GlyphMap glyphs;
     glyphs.build(items, (sd + "item_glyphs.txt").c_str());
-    stack.build(items, (sd + "nonstackable.txt").c_str(), &glyphs);
+    StackLimits limits;
+    CHECK(limits.load((sd + "item_stacks.txt").c_str(), items.size()));
+    stack.build(items, (sd + "nonstackable.txt").c_str(), &glyphs, &limits);
+    CHECK(stack.maxQty(idOf(items, "wood")) == 30 && stack.maxQty(idOf(items, "Nook Miles Ticket")) == 10);
     CHECK(glyphs.loaded() && glyphs.glyphOf(idOf(items, "golden axe")) != 0);
     CHECK(stack.isSingle(idOf(items, "golden axe")) && stack.isSingle(idOf(items, "star wand")));
     CHECK(!stack.isSingle(idOf(items, "Nook Miles Ticket")));
@@ -93,13 +97,14 @@ int main(int argc, char** argv) {
     for (int s = 1; s <= 20; s++) put(pockets, s, ID_EMPTY, 0);
     put(pockets, 1, idOf(items, "golden axe"), 0);
     put(pockets, 2, idOf(items, "Nook Miles Ticket"), 3);
-    put(pockets, 3, idOf(items, "wood"), 30);
+    put(pockets, 3, idOf(items, "wood"), 29);                // raw 29 = 30, a full stack
     put(pockets, 6, idOf(items, "golden shovel"), 0);
-    put(pockets, 11, idOf(items, "apple"), 10);
+    put(pockets, 11, idOf(items, "apple"), 9);
     put(pockets, 12, idOf(items, "star wand"), 5);          // non-stackable with an odd count
+    put(pockets, 13, idOf(items, "wood"), 49);               // 50 wood: more than the game allows (30)
     uint32_t vals[4] = { 12345, 4800000, 230500, 98000 };
     uint8_t loadout[POCKETS_BYTES]; memcpy(loadout, pockets, sizeof loadout);
-    put(loadout, 4, idOf(items, "iron nugget"), 30);
+    put(loadout, 4, idOf(items, "iron nugget"), 29);
     loadoutWrite((sd + "l_0.dat").c_str(), loadout);
 
     // Fake engine. apply() reproduces what main.cpp + doSave() do with the slot vars (I2).
@@ -109,9 +114,9 @@ int main(int argc, char** argv) {
     std::deque<std::string> keyboard;
 
     EngineHooks h;
-    h.pockets = pockets; h.vals = vals; h.items = &items; h.favorites = &favs; h.stack = &stack; h.glyphs = &glyphs;
+    h.pockets = pockets; h.vals = vals; h.items = &items; h.favorites = &favs; h.stack = &stack; h.limits = &limits; h.glyphs = &glyphs;
     h.saveReady = true; h.editSupported = true; h.loadoutNames = LOADOUT_NAMES; h.loadoutCount = 5;
-    h.sdDir = sd; h.version = "1.0.0 (harness)";
+    h.sdDir = sd; h.version = "1.0.1 (harness)";
     h.apply = [&]() {
         applyCalls++;
         syncSaveSlotVars(pockets, gSlot, gNewId, gNewCount);
@@ -152,6 +157,18 @@ int main(int argc, char** argv) {
                    UP = HidNpadButton_Up, DOWN = HidNpadButton_Down, LEFT = HidNpadButton_Left, RIGHT = HidNpadButton_Right,
                    PLUS = HidNpadButton_Plus, MINUS = HidNpadButton_Minus, ZL = HidNpadButton_ZL, ZR = HidNpadButton_ZR;
 
+    // A stack above the game's limit is flagged in the grid and in the detail line, never changed.
+    press(ui, RIGHT); press(ui, DOWN, 2); idle(ui);
+    shot("pockets-over-max");
+    CHECK(readSlot(pockets, 13).raw == 49);
+    // Slot 13 > Quantity... (3rd entry: Take, Fill, Quantity) > A: the stepper starts at the limit and writes it.
+    press(ui, A); idle(ui); press(ui, DOWN, 2); press(ui, A); idle(ui);
+    shot("quantity-over-max");
+    press(ui, A); idle(ui);
+    CHECK(readSlot(pockets, 13).raw == qtyToRaw(30));
+    setSlotRaw(pockets, 13, 49); idle(ui);                // back to the loaded state: no pending change
+    press(ui, UP, 2); press(ui, LEFT); idle(ui);
+
     // ZL / ZR must do nothing anymore (upstream: instant restore / Doctor).
     press(ui, ZL); press(ui, ZR); press(ui, ZR);
     CHECK(restoreCalls == 0 && doctorCalls == 0);
@@ -166,7 +183,7 @@ int main(int argc, char** argv) {
     press(ui, A); idle(ui);
     shot("favorites-menu");
     press(ui, DOWN); press(ui, A); idle(ui);                // "Take with quantity..."
-    press(ui, UP); press(ui, LEFT); idle(ui);               // 1 -> 11 -> 10
+    press(ui, UP); press(ui, RIGHT); idle(ui);              // 1 -> 10 (capped: tickets stack to 10), +1 stays 10
     shot("quantity-stepper");
     press(ui, A); idle(ui);
     shot("pockets-holding");

@@ -419,6 +419,8 @@ Aucune de ces modifications n'a été faite. Les deux premières (D1, D2) touche
 - **Contre** : s'écarte du comportement upstream éprouvé (+0/+4 seulement). Remettre +6 à 0 sur un outil réel le rend neuf, ce qui est sans doute acceptable. La spec a choisi de ne pas le faire (Q3).
 
 ### D4 — Convention « quantité − 1 » (UI seulement)
+> **Confirmé en jeu le 12/11/2026 (ACNH 3.0.3)** : brut 9 = 10 tickets. La v1.0.0 était sortie avec `kCountZeroBased = false` et donnait un objet de trop ; corrigé en v1.0.1, qui borne aussi chaque pile à la limite du jeu (`item_stacks.txt`, d'après `MaxCountByKind` de NHSE). Une pile au-delà de la limite (50 bois) est ramenée par le jeu à une autre valeur (11 constatés), sans corruption.
+
 - **Quoi** : afficher `raw + 1` pour les empilables et écrire `quantité − 1` ; écrire `0` pour les non empilables.
 - **À vérifier en jeu d'abord** (point i). Le choix change le sens de toute la plage 1…99 de l'upstream et la règle « 1/slot » de la spec.
 

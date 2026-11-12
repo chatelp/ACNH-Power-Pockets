@@ -123,6 +123,11 @@ static void testValuesStatus() {
     CHECK(clampVal(2, 99999999) == 9999999u && clampVal(3, 123) == 123u);
     CHECK(placeRaw(true, 50) == 0);
     CHECK(qtyToRaw(0) == (kCountZeroBased ? 0 : 1) && qtyToRaw(500) == (kCountZeroBased ? 98 : 99));
+    // The game stores quantity - 1 (console test 2026-11-12: raw 9 = 10 tickets).
+    CHECK(kCountZeroBased);
+    CHECK(qtyToRaw(9) == 8 && qtyToRaw(1) == 0 && qtyToRaw(30) == 29);
+    CHECK(rawToQty(9) == 10 && rawToQty(0) == 1 && rawToQty(29) == 30);
+    CHECK(placeRaw(false, 9) == 8);
     // Exact upstream strings (main.cpp).
     CHECK(parseSaveStatus("SAVED personal + main to NAND!") == ER_OK);
     CHECK(parseSaveStatus("BAK sd open 0x2EE202") == ER_BACKUP_FAILED);
@@ -171,6 +176,31 @@ static void testStackRules() {
     CHECK(sr.isSingle(12));                                  // ~sprout
     CHECK(sr.fileIgnored() == 3);                            // "not an item", "~", "0xZZZZ"
     CHECK(!sr.isSingle(0xFFFE));
+
+    // Game stack limits (item_stacks.txt).
+    printf("stack limits\n");
+    StackLimits lim;
+    CHECK(!lim.load(path("missing_stacks.txt").c_str(), items.size()) && !lim.loaded() && lim.maxOf(7) == 0);
+    sr.build(items, path("missing.txt").c_str(), nullptr, &lim);  // not loaded: old behaviour
+    CHECK(sr.maxQty(7) == QTY_MAX && sr.maxQty(1) == 1);
+    writeText(path("stacks.txt"),
+              "# comment\n0002 10\n0004-0005 1\n0007 30\n0001 5\n000D 99\n"
+              "0009 0\n0003-0002 10\nzz 3\n0006 abc\n0006\n0006 300\nFFF0 10\n");
+    CHECK(lim.load(path("stacks.txt").c_str(), items.size()) && lim.loaded());
+    CHECK(lim.ignoredLines() == 6);                          // 0, reversed range, zz, abc, no value, 300
+    CHECK(lim.maxOf(2) == 10 && lim.maxOf(4) == 1 && lim.maxOf(5) == 1 && lim.maxOf(7) == 30);
+    CHECK(lim.maxOf(6) == 0 && lim.maxOf(9) == 0 && lim.maxOf(0xFFF0) == 0 && lim.known() == 6);
+    writeText(path("ns2.txt"), "pearl\n-gold roses\n");
+    sr.build(items, path("ns2.txt").c_str(), nullptr, &lim);
+    CHECK(sr.isSingle(4) == false);                          // limit 1, then removed by the user file
+    CHECK(sr.isSingle(5));                                   // limit 1 and the user file
+    CHECK(!sr.isSingle(1) && sr.maxQty(1) == 5);             // golden axe: the game limit (5) beats the built-in tool rule
+    CHECK(sr.maxQty(2) == 10 && sr.maxQty(7) == 30 && sr.maxQty(13) == QTY_MAX);
+    CHECK(sr.maxQty(4) == QTY_MAX);                          // made stackable by the user: old bound
+    CHECK(sr.maxQty(3) == QTY_MAX && sr.maxQty(0xFFF0) == QTY_MAX);   // unknown
+    CHECK(!sr.overMax(7, qtyToRaw(30)) && sr.overMax(7, 30) && sr.overMax(7, 49));   // wood: raw 29 = 30 is the most
+    CHECK(!sr.overMax(2, 9) && sr.overMax(2, 10));           // tickets: raw 9 = 10
+    CHECK(!sr.overMax(5, 7));                                // 1/slot: never "over max" (the field is a variant)
 }
 
 static const char* BUILTIN[] = { "gold roses", "pearl", "golden axe", "does not exist" };
@@ -455,7 +485,24 @@ static void testGlyphsMatchTool() {
     CHECK(sr.isSingle(idOf("gold bars")) && sr.isSingle(idOf("crown (No Variations)")) && sr.isSingle(idOf("sea bass")));
     CHECK(sr.isSingle(idOf("frilly dress (Pink)")) && sr.isSingle(idOf("golden axe")) && sr.isSingle(idOf("K.K. Bossa")));
     CHECK(!sr.isSingle(idOf("Nook Miles Ticket")) && !sr.isSingle(idOf("gold nugget")) && !sr.isSingle(idOf("wood")) && !sr.isSingle(idOf("apple")));
-    printf("    1/slot items with the shipped files: %d\n", sr.singleCount());
+    const int singlesByGlyph = sr.singleCount();
+    StackLimits lim;
+    CHECK(lim.load((std::string(root) + "/assets/item_stacks.txt").c_str(), items.size()) && lim.ignoredLines() == 0);
+    StackRules srl;
+    srl.build(items, (std::string(root) + "/assets/nonstackable.txt").c_str(), &g, &lim);
+    int becameSingle = 0, becameStack = 0;
+    for (size_t k = 0; k < items.size(); k++) {
+        if (srl.isSingle((uint16_t)k) && !sr.isSingle((uint16_t)k)) { if (becameSingle++ < 8) printf("    now 1/slot (game limit 1): %s\n", items[k].name.c_str()); }
+        if (!srl.isSingle((uint16_t)k) && sr.isSingle((uint16_t)k)) { if (becameStack++ < 8) printf("    now stacks to %d: %s\n", srl.maxQty((uint16_t)k), items[k].name.c_str()); }
+    }
+    printf("    game stack limits: %d items; vs the glyph guess: %d now 1/slot, %d now stack\n", lim.known(), becameSingle, becameStack);
+    CHECK(srl.isSingle(idOf("gold bars")) && srl.isSingle(idOf("crown (No Variations)")) && srl.isSingle(idOf("sea bass")));
+    CHECK(srl.isSingle(idOf("frilly dress (Pink)")) && srl.isSingle(idOf("golden axe")) && srl.isSingle(idOf("K.K. Bossa")));
+    CHECK(srl.maxQty(idOf("wood")) == 30 && srl.maxQty(idOf("hardwood")) == 30 && srl.maxQty(idOf("iron nugget")) == 30);
+    CHECK(srl.maxQty(idOf("Nook Miles Ticket")) == 10 && srl.maxQty(idOf("apple")) == 10 && srl.maxQty(idOf("99,000 Bells")) == 10);
+    CHECK(srl.maxQty(idOf("star fragment")) == 10 && srl.maxQty(0x0A40) == 99);         // clump of weeds
+    sr = srl;
+    printf("    1/slot items with the shipped files: %d (glyphs alone: %d)\n", sr.singleCount(), singlesByGlyph);
     CHECK(sr.singleCount() > 9000);
     FILE* d = fopen(dumpPath, "rb");
     CHECK(d != nullptr);

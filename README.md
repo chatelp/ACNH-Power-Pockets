@@ -4,7 +4,7 @@
 > **This tool writes directly to your Animal Crossing: New Horizons save. It can corrupt it, and a corrupted island may be impossible to recover.**
 >
 > - **Back up your save with [JKSV](https://github.com/J-D-K/JKSV) or [Checkpoint](https://github.com/BernardoGiordano/Checkpoint) before every editing session, and copy that backup to a computer.** The app's own SD backups are a safety net, not a replacement.
-> - **Tested on one console and one save only (game 3.0.3).** The very first test was refused by the game as corrupted: one integrity hash had not been updated. Version 1.0.0 recomputes them, and its edits were then accepted by the game. Stack quantities were checked too (9 tickets placed, 9 in the game). That is still a single island: do the [first-use test](#first-use-test) on a save you can afford to lose before touching yours.
+> - **Tested on one console and one save only (game 3.0.3).** The very first test was refused by the game as corrupted: one integrity hash had not been updated. Version 1.0.0 recomputes them, and its edits were then accepted by the game. **Version 1.0.0 also got stack quantities wrong:** every stack it placed came out one item larger (9 tickets gave 10), and it let a stack go past what the game allows (50 wood came out as 11). Version 1.0.1 fixes both; the fix is covered by tests but not yet checked in the game. That is still a single island: do the [first-use test](#first-use-test) on a save you can afford to lose before touching yours.
 > - Offline use only. Editing saves can get you into trouble online and may break Nintendo's terms of service. Never trade edited or unreleased items with other players.
 > - Provided **as is, with no warranty of any kind** (MIT license). You alone are responsible for what happens to your save, your console and your accounts. Not affiliated with or endorsed by Nintendo.
 
@@ -50,7 +50,7 @@ Pick an item once, from your favorites, the catalog, or your own pockets. Each p
 
 ### A picture and a color for every item
 
-98 small original pictures, one per kind of item, tinted with the item's color when its name gives one. Items that never stack (clothes, furniture, fish and bugs, recipes, tools… about 9,300 of them) carry a `1/slot` badge and are never given a quantity they can't hold. For those items the game uses the "quantity" field to pick a variant, so a wrong number there would give you a different item.
+98 small original pictures, one per kind of item, tinted with the item's color when its name gives one. Items that never stack (clothes, furniture, fish and bugs, recipes, tools… about 10,500 of them) carry a `1/slot` badge and are never given a quantity they can't hold. For those items the game uses the "quantity" field to pick a variant, so a wrong number there would give you a different item. Items that do stack can't go past the game's own limit: 30 for wood and ores, 10 for tickets and fruit, 50 for fences, and so on.
 
 | | |
 |---|---|
@@ -83,7 +83,8 @@ Do this once, with a save you can afford to lose. It checks, on your console and
 2. Launch Power Pockets. Put **Nook Miles Ticket** in an **empty** slot with quantity **9** (*Favorites* › *Take with quantity…* › 9, then **Y** in *Pockets*). Press **+**, then **Apply**. Change nothing else. Use a real stackable item: "gold bars", for instance, is a piece of furniture (the stackable material is "gold nugget").
 3. Start the game:
    - **The save doesn't load, or the game offers to restore it:** stop. Restore your JKSV/Checkpoint backup and [report it](../../issues/new?template=bug_report.yml) with your game version.
-   - **You get 9 tickets:** all good, quantities are exact (this is what happened on ACNH 3.0.3).
+   - **You get 9 tickets:** all good, quantities are exact.
+   - **You get 10 tickets:** you are running version 1.0.0, which adds one item to every stack. Update to 1.0.1 or later.
    - **Any other number:** please [report it](../../issues/new?template=test_report.yml), with your game version.
 4. Save in the game, quit, reopen Power Pockets and look at **System › Info › Region hashes**. It should read `personal 2/2 · main 19/19`. Report it if it doesn't.
 
@@ -91,7 +92,7 @@ Do this once, with a save you can afford to lose. It checks, on your console and
 
 Requirements: a Switch running Atmosphère, and Animal Crossing: New Horizons **3.0.x** (other save versions open read-only).
 
-1. Download `ACNH-Power-Pockets-v1.0.0.zip` from the [Releases page](../../releases) (v1.0.0 is marked pre-release) and extract it to the root of the SD card. It creates `switch/acnh_power_pockets/`. Builds of every commit are also in the [Actions tab](../../actions) (GitHub login required).
+1. Download the latest `ACNH-Power-Pockets-v1.0.x.zip` from the [Releases page](../../releases) (marked pre-release) and extract it to the root of the SD card. It creates `switch/acnh_power_pockets/`. Builds of every commit are also in the [Actions tab](../../actions) (GitHub login required).
 2. Fully close the game: HOME › highlight Animal Crossing › **X** › Close. A suspended game overwrites your edits on its next autosave.
 3. Hold **R** while starting Animal Crossing to open the Homebrew Menu, then launch **ACNH Power Pockets**. Launching from the Album is refused: it doesn't give the app enough access.
 
@@ -102,6 +103,7 @@ The folder should contain:
 | `acnh_power_pockets.nro`, `font.ttf` | Required |
 | `items.txt` | Strongly recommended: item names, favorites and the `1/slot` protection depend on it |
 | `item_glyphs.png`, `item_glyphs.txt` | Strongly recommended: item pictures, and the kinds of items that never stack (without them, the `1/slot` protection only covers tools and the few items listed in `nonstackable.txt`) |
+| `item_stacks.txt` | Strongly recommended: the largest stack the game allows for each item (without it, quantities are only kept within 1–99, and the game cuts a stack that is too large in its own way) |
 | `icon.png`, `ui_icons.png`, `nonstackable.txt` | Optional: icons, extra `1/slot` rules |
 
 ### Already using ACNH-Save-Editor?
@@ -177,6 +179,7 @@ All in `sdmc:/switch/acnh_power_pockets/`.
 | `user_favorites.txt` | the app | Your favorites. Plain text, safe to edit. `.bak` keeps your previous version. |
 | `nonstackable.txt` | you | Extra `1/slot` rules (optional) |
 | `item_glyphs.png`, `item_glyphs.txt` | you (install) | Item pictures, the rules that pick a picture and a color for each item, and which kinds of items never stack |
+| `item_stacks.txt` | you (install) | Largest stack of each item, from NHSE's item data (`tools/make_item_stacks.py`) |
 | `backup_personal.dat`, `backup_main.dat` | the app | Save as it was before the last Apply |
 | `session_personal.dat`, `session_main.dat` | the app | Pre-edit backup: save as the game last wrote it, before this app's first write |
 | `session_mark.txt` | the app | Tells the app whether the pre-edit backup still matches the console (don't edit) |
@@ -197,7 +200,7 @@ golden axe     exact item name, case-insensitive
 ~wand          every item whose name contains "wand"
 -Wandering     undo a match
 ```
-Tools (axes, nets, fishing rods, shovels, watering cans, slingshots, ladder, vaulting pole) are always `1/slot`. Whole kinds of items (clothes, furniture, fish, recipes…) are `1/slot` through `item_glyphs.txt`. The shipped `nonstackable.txt` adds wands, saplings and sprouts, and its rules apply last, so it can also take an item off the list.
+Tools (axes, nets, fishing rods, shovels, watering cans, slingshots, ladder, vaulting pole) are `1/slot`, and so are whole kinds of items (clothes, furniture, fish, recipes…) through `item_glyphs.txt`. `item_stacks.txt` then has the last word for the items it knows: a limit of 1 makes an item `1/slot`, a larger one makes it stack. The shipped `nonstackable.txt` adds wands, saplings and sprouts, and its rules apply last, so it can also take an item off the list.
 
 `item_glyphs.txt` documents its own format at the top of the file. A mistake in it only changes the pictures and which items are treated as `1/slot`.
 
@@ -209,6 +212,7 @@ Tools (axes, nets, fishing rods, shovels, watering cans, slingshots, ladder, vau
 | Red "missing file" or "unreadable file" text at launch | `font.ttf` is missing from `sdmc:/switch/acnh_power_pockets/`, or its copy is damaged. |
 | Names show as `ID 16DB` | `items.txt` is missing. Editing still works, but favorites become read-only and the `1/slot` protection is off: put the file back before placing items. |
 | No pictures next to the items | `item_glyphs.png` or `item_glyphs.txt` is missing. System › Info says "no pictures". Put them back: without them the `1/slot` protection only covers tools. |
+| A stack shows ⚠ and "more than the game allows" | It was set above the game's limit, by version 1.0.0 or another editor. *Quantity…* › **A** brings it back to the limit. Left as it is, the game changes it to some other number when it loads the save (50 wood came out as 11). |
 | The game says the save data is corrupted | Restore your JKSV/Checkpoint backup. Or, in Power Pockets: System › *Restore pre-edit backup* (the state before your edits), or System › *Save Doctor* (keeps your edits and recomputes the hashes). Then please [open an issue](../../issues). |
 | Amber banner "Stale integrity hash" | The save on the console has a hash that doesn't match its data, and the game would refuse it. System › *Save Doctor* fixes it; so does any Apply. |
 | Stuck on "Reading the save…" | Not frozen. With a stale hash on the console the launch scan is slow (up to minutes). |
@@ -242,7 +246,7 @@ The two `ui_*` scripts need SDL2 and SDL2_ttf (`brew install sdl2 sdl2_ttf`) and
 | `source/main.cpp` | Upstream save engine and the wiring to the UI |
 | `source/pp_model.*` | Testable logic: slots, pending changes, favorites, `1/slot` and picture rules, backup checks |
 | `source/pp_ui.*`, `source/pp_strings.h` | Panels, dialogs, every on-screen string |
-| `tools/` | Engine check, and the scripts that draw the logo, icons and item pictures |
+| `tools/` | Engine check, the scripts that draw the logo, icons and item pictures, and the one that builds `item_stacks.txt` from NHSE |
 | `docs/design/` | Visual design system, item pictures, HTML mockups |
 | `docs/ux/UX_SPEC.md` | Interaction spec |
 | `docs/engine/AUDIT_ECRITURE.md` | Read-only audit of the save-writing code |
@@ -264,7 +268,7 @@ What changed is everything you see and touch:
 | One slot per save | Any number of slots per Apply, **Y** fills the next empty slot |
 | Favorites compiled into the app | Favorites editable in the app, stored on the SD card |
 | Item names only | A picture and a color for each item |
-| Quantity asked for every item | `1/slot` items flagged, no quantity asked |
+| Quantity asked for every item, up to 99 | `1/slot` items flagged, no quantity asked; stacks kept within the game's limit for each item |
 | **ZL** restores in one press, **ZR ZR** runs the Doctor | Both in the System panel, hold-to-confirm, blocked with pending changes |
 | One rolling backup | Rolling backup plus a pre-edit backup kept until the game saves, both validated before restoring |
 | Integrity hashes: rewritten for regions guessed by scanning (v1.4.0 release), not rewritten at all (later, unreleased source) | Rewritten from the fixed 3.0.x region table, and all 21 checked before anything is written |
@@ -283,9 +287,9 @@ Pull requests are welcome for the interface, tests and docs. Changes to the save
 
 MIT. See [LICENSE](LICENSE). Copyright cbreezy210 (upstream) and the Power Pockets contributors.
 
-Two shipped data files keep their own license (details in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md), texts in [`licenses/`](licenses)): `items.txt`, the item names table from NHSE (GPL-3.0), and `font.ttf`, the Varela Round font (SIL OFL 1.1).
+Three shipped data files keep their own license (details in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md), texts in [`licenses/`](licenses)): `items.txt` and `item_stacks.txt`, item data from NHSE (GPL-3.0), and `font.ttf`, the Varela Round font (SIL OFL 1.1).
 
 - **cbreezy210** — [ACNH-Save-Editor](https://github.com/cbreezy210/ACNH-Save-Editor), the save engine this project runs on.
-- **kwsch and [NHSE](https://github.com/kwsch/NHSE)** — the ACNH save-format research everything here relies on, and the item names table (`items.txt`, GPL-3.0).
+- **kwsch and [NHSE](https://github.com/kwsch/NHSE)** — the ACNH save-format research everything here relies on, the item names table (`items.txt`) and the item kinds and stack limits behind `item_stacks.txt` (GPL-3.0).
 - **[devkitPro](https://devkitpro.org) / libnx**, **SDL2**, **SDL_ttf**, **stb_image**.
 - **Varela Round** font by The Varela Round Project Authors (SIL Open Font License 1.1).

@@ -131,7 +131,7 @@ static Save makeSave(size_t pSz = P_SZ, size_t mSz = M_SZ) {
     Model& m = s.model;
     for (int i = 1; i <= 20; i++) rec(m.pockets, i, pp::ID_EMPTY, 0, 0, 0, 0);
     rec(m.pockets, 1, ID_GAXE, 0x20, 0, 0, 7);               // tool with wear and a flag byte
-    rec(m.pockets, 2, ID_NMT, 0, 0, 4, 0);
+    rec(m.pockets, 2, ID_NMT, 0, 0, 4, 0);                   // raw 4 = 5 tickets
     rec(m.pockets, 3, ID_WOOD, 0, 0x41, 29, 0);              // wrapped stack
     rec(m.pockets, 4, ID_APPLE, 0, 0, 9, 0);
     rec(m.pockets, 19, pp::ID_EMPTY, 0, 0, 5, 0);            // "dirty" empty record: must be left alone
@@ -187,6 +187,7 @@ static World makeWorld(const char* name, const Save& s, bool withItems = true, b
     if (withFont) writeFile(dst + "font.ttf", slurp(g_repo + "/assets/font.ttf"));
     if (withItems) writeFile(dst + "items.txt", slurp(g_repo + "/assets/items.txt"));
     writeFile(dst + "nonstackable.txt", slurp(g_repo + "/assets/nonstackable.txt"));
+    writeFile(dst + "item_stacks.txt", slurp(g_repo + "/assets/item_stacks.txt"));
     return w;
 }
 // Decrypted committed console state (child side, relative paths).
@@ -283,8 +284,8 @@ static void scnApplyRestoreCycle(const Save& s0) {
         rec(m.pockets, 3, pp::ID_EMPTY, 0, 0, 0, 0);
         SEE("Slot 3 cleared");
         press(UP); press(A); press(DOWN, 3); press(A); idle(2);                         // slot 2 > Quantity...
-        press(RIGHT, 5); press(A); idle(2);                                             // 4 -> 9
-        rec(m.pockets, 2, ID_NMT, 0, 0, pp::qtyToRaw(9), 0);
+        press(RIGHT, 8); press(A); idle(2);                                             // 5 -> 10: capped, tickets stack to 10
+        rec(m.pockets, 2, ID_NMT, 0, 0, pp::qtyToRaw(10), 0);
         enterIdFromOccupied("2591", true);                                              // golden axe: 1/slot
         SEE("1/slot");
         press(Y); idle(2); rec(m.pockets, 3, ID_GAXE, 0, 0, 0, 0);                       // next empty from slot 2 is slot 3: clean record, raw 0
