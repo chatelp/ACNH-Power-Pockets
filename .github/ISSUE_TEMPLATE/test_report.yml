@@ -1,0 +1,59 @@
+name: First-use test report
+description: You ran the first-use test from the README. Tell us how it went, even if everything worked.
+title: "[Test] "
+labels: ["test report"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This test is the most useful contribution right now: Power Pockets has only been tried on one console and one save so far. Steps are in the README, section [First-use test](https://github.com/chatelp/ACNH-Power-Pockets#first-use-test).
+  - type: dropdown
+    id: loaded
+    attributes:
+      label: After Apply, did the game load the save?
+      options:
+        - "Yes, normally"
+        - "No: the game said the save data is corrupted"
+        - "Something else (explain below)"
+    validations:
+      required: true
+  - type: dropdown
+    id: tickets
+    attributes:
+      label: You placed 9 Nook Miles Tickets. How many did the game show?
+      options:
+        - "9"
+        - "10"
+        - "Another number (explain below)"
+        - "I placed something else (explain below)"
+    validations:
+      required: true
+  - type: input
+    id: hashes_after
+    attributes:
+      label: System › Info › Region hashes, after saving in the game and reopening the app
+      placeholder: "personal 2/2 · main 19/19"
+  - type: input
+    id: app_version
+    attributes:
+      label: Power Pockets version
+      placeholder: "1.0.0"
+    validations:
+      required: true
+  - type: input
+    id: game_version
+    attributes:
+      label: Animal Crossing version
+      placeholder: "3.0.3"
+    validations:
+      required: true
+  - type: input
+    id: firmware
+    attributes:
+      label: Switch firmware and Atmosphère version
+      placeholder: "20.x.x / Atmosphère 1.x.x"
+  - type: textarea
+    id: notes
+    attributes:
+      label: Notes
+      description: Anything surprising, slow or unclear.

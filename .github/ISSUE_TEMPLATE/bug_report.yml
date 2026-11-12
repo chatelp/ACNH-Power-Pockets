@@ -1,0 +1,85 @@
+name: Problem report
+description: Something went wrong (the game refused the save, the app crashed, an item came out wrong...)
+title: "[Problem] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. **If the game says your save data is corrupted, stop editing.** Restore your JKSV / Checkpoint backup first, or in Power Pockets use System › *Restore pre-edit backup* or System › *Save Doctor*. Then fill in this form: the details below are what makes a fix possible.
+
+        Please don't attach save files, keys or anything that identifies you.
+  - type: dropdown
+    id: severity
+    attributes:
+      label: What happened?
+      options:
+        - The game says the save data is corrupted / offers to restore it
+        - An item, quantity or value is wrong in the game
+        - The app crashed, froze or showed an error
+        - Something else
+    validations:
+      required: true
+  - type: textarea
+    id: description
+    attributes:
+      label: Describe it
+      description: What you did in the app, step by step, what you expected, and what you got.
+      placeholder: |
+        1. Favorites › Nook Miles Ticket › Take with quantity… 9
+        2. Y in Pockets (slot 4), + › Apply
+        3. In the game: 10 tickets instead of 9
+    validations:
+      required: true
+  - type: input
+    id: app_version
+    attributes:
+      label: Power Pockets version
+      description: Shown in System › Info › Version.
+      placeholder: "1.0.0"
+    validations:
+      required: true
+  - type: input
+    id: game_version
+    attributes:
+      label: Animal Crossing version
+      description: Shown on the game's title screen.
+      placeholder: "3.0.3"
+    validations:
+      required: true
+  - type: input
+    id: firmware
+    attributes:
+      label: Switch firmware and Atmosphère version
+      placeholder: "20.x.x / Atmosphère 1.x.x"
+    validations:
+      required: true
+  - type: input
+    id: hashes
+    attributes:
+      label: System › Info › Region hashes
+      description: What the line reads, ideally before and after the problem.
+      placeholder: "personal 2/2 · main 19/19"
+  - type: dropdown
+    id: closed
+    attributes:
+      label: Was the game fully closed (HOME › X › Close) while you edited?
+      options:
+        - "Yes"
+        - "No / not sure"
+    validations:
+      required: true
+  - type: dropdown
+    id: backup
+    attributes:
+      label: Do you have a JKSV or Checkpoint backup from before the edit?
+      options:
+        - "Yes"
+        - "No"
+    validations:
+      required: true
+  - type: textarea
+    id: extra
+    attributes:
+      label: Anything else
+      description: Screenshots of the app or the game, messages shown, files in sdmc:/switch/acnh_power_pockets/ you edited by hand...

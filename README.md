@@ -82,7 +82,7 @@ Do this once, with a save you can afford to lose. It answers two questions nobod
 1. Back up the save with JKSV or Checkpoint and copy the backup to a computer.
 2. Launch Power Pockets. Put **Nook Miles Ticket** in an **empty** slot with quantity **9** (*Favorites* › *Take with quantity…* › 9, then **Y** in *Pockets*). Press **+**, then **Apply**. Change nothing else. Use a real stackable item: "gold bars", for instance, is a piece of furniture (the stackable material is "gold nugget").
 3. Start the game:
-   - **The save doesn't load, or the game offers to restore it:** stop. Restore your JKSV/Checkpoint backup and [open an issue](../../issues) with your game version.
+   - **The save doesn't load, or the game offers to restore it:** stop. Restore your JKSV/Checkpoint backup and [report it](../../issues/new?template=bug_report.yml) with your game version.
    - **You get 10 tickets:** the game stores "quantity − 1". Displayed quantities are off by one until `kCountZeroBased` is set to `true` in `source/pp_model.h`. Please report it.
    - **You get 9 tickets:** quantities are exact.
 4. Save in the game, quit, reopen Power Pockets and look at **System › Info › Region hashes**. It should read `personal 2/2 · main 19/19`. Report it if it doesn't.
@@ -276,7 +276,7 @@ Upstream's own history and plans: [ROADMAP.md](ROADMAP.md) (kept unchanged).
 
 ## Contributing
 
-The most useful contribution right now is a **first-use test report**. Open an issue with your game version, your firmware/Atmosphère version, how many tickets you got, and what System › Info showed.
+The most useful contribution right now is a **first-use test report**: [open one here](../../issues/new?template=test_report.yml). It asks for your game version, your firmware/Atmosphère version, how many tickets you got, and what System › Info showed. For anything that went wrong, use the [problem report](../../issues/new?template=bug_report.yml).
 
 Pull requests are welcome for the interface, tests and docs. Changes to the save engine (`source/main.cpp` engine blocks) need a strong case and a way to test them. `tools/check_engine_untouched.py` fails on purpose when the engine changes.
 

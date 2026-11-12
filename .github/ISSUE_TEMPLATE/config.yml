@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Features beyond pockets, Bells, Miles and the loan
+    url: https://github.com/cbreezy210/ACNH-Save-Editor
+    about: Power Pockets only edits those. The upstream project, ACNH-Save-Editor, is where the save engine comes from.
