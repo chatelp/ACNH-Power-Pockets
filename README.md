@@ -10,7 +10,7 @@
 
 ![Power Pockets: pocket and Bells editor for ACNH](banner.png)
 
-**[Download a release](../../releases)** · Nintendo Switch with Atmosphère · Animal Crossing: New Horizons 3.0.x
+**[Download a release](../../releases)** · [Discussion on GBAtemp](https://gbatemp.net/threads/release-acnh-power-pockets-pocket-bells-editor-for-acnh-on-the-console-fork-of-acnh-save-editor-pre-release.686451/) · Nintendo Switch with Atmosphère · Animal Crossing: New Horizons 3.0.x
 
 **Fill your pockets fast, and see every change before a single byte is written.**
 
