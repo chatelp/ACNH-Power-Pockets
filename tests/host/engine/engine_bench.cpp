@@ -751,6 +751,15 @@ static void scnRealSave(const Save&) {
     const int hp = validHashes(s.pPlain, P_REGS, 2), hm = validHashes(s.mPlain, M_REGS, 19);
     printf("    as dumped: personal %d/2 hashes valid, main %d/19\n", hp, hm);
     const bool stale = hp != 2 || hm != 19;
+    {                                                                        // pocket upgrades, as the app sees them
+        const uint32_t bc = rd32(&s.pPlain[BAG_COUNT]);
+        const int slots = pp::slotsFromBagCount(bc);
+        pp::Pockets pk(&s.pPlain[POCKETS], &s.pPlain[BAG], slots);
+        printf("    pockets: bag counter %u -> %d slots, %d used; pocket block counter %u\n", (unsigned)bc, pk.count, pp::countItems(pk),
+               (unsigned)rd32(&s.pPlain[POCKETS + 160]));
+        for (int i = 21; i <= pk.count; i++) { pp::SlotRec r = pp::readSlot(pk, i); if (r.id != pp::ID_EMPTY) printf("      slot %d: 0x%04X raw %u\n", i, r.id, r.raw); }
+        CHECK(pp::pocketsPlausible(&s.pPlain[BAG], 20));
+    }
     pp::TurnipWeek tw;
     if (pp::readTurnipWeek(s.mPlain.data(), s.mPlain.size(), tw)) {          // compare with the game / Turnips
         printf("    turnips: Daisy Mae %u, pattern %u, saved %04d-%02d-%02d %02d:%02d%s\n      ", (unsigned)tw.buy, (unsigned)tw.pattern,

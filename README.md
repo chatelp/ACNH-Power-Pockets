@@ -50,7 +50,7 @@ With the pocket upgrades from Nook's Cranny, the grid shows your 30 or 40 slots.
 | | |
 |---|---|
 | ![Favorites panel with the YOURS and BUILT-IN groups](docs/screenshots/favorites.png) | ![Action menu of a pocket slot](docs/screenshots/slot-menu.png) |
-| **Favorites.** Yours first, then the 41 built-in ones (fruits, vegetables and common materials among them). Add or remove them from the app; they are saved on the SD card. | **One menu per slot.** Fill empty slots, change a quantity, pick the item up, favorite it, revert it, clear it. |
+| **Favorites.** Yours first, then the 69 built-in ones: useful items and tools, fruits, vegetables, common and seasonal materials, and a few rare finds. Add or remove them from the app; they are saved on the SD card. | **One menu per slot.** Fill empty slots, change a quantity, pick the item up, favorite it, revert it, clear it. |
 
 ### A picture and a color for every item
 

@@ -191,7 +191,38 @@ static const char* FAV_NAMES[] = {
     "stone",
     "clay",
     "tree branch",
-    "bamboo piece"
+    "bamboo piece",
+    // Useful items and tools
+    "fish bait",
+    "medicine",
+    "pitfall seed",
+    "white wrapping paper",
+    "sapling",
+    "ladder",
+    "vaulting pole",
+    "fossil",
+    // Seasonal materials
+    "young spring bamboo",
+    "pine cone",
+    "acorn",
+    "maple leaf",
+    "summer shell",
+    "snowflake",
+    "large snowflake",
+    "red ornament",
+    "heart crystal",
+    // Rare and fun
+    "golden toilet",
+    "golden seat",
+    "golden casket",
+    "robot hero",
+    "Nintendo Switch",
+    "wobbling Zipper toy",
+    "coelacanth",
+    "stringfish",
+    "golden trout",
+    "barreleye",
+    "golden stag"
 };
 static const int FAV_MAX = (int)(sizeof(FAV_NAMES) / sizeof(FAV_NAMES[0]));
 

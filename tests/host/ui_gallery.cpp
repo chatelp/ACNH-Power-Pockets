@@ -48,7 +48,12 @@ static const char* FAV_NAMES[] = {
     "golden watering can", "crown (No Variations)", "royal crown (No Variations)",
     "apple", "cherry", "orange", "peach", "pear", "coconut",
     "potato", "carrot", "wheat", "sugarcane", "tomato", "orange pumpkin",
-    "wood", "softwood", "hardwood", "stone", "clay", "tree branch", "bamboo piece" };
+    "wood", "softwood", "hardwood", "stone", "clay", "tree branch", "bamboo piece",
+    "fish bait", "medicine", "pitfall seed", "white wrapping paper", "sapling", "ladder", "vaulting pole", "fossil",
+    "young spring bamboo", "pine cone", "acorn", "maple leaf", "summer shell", "snowflake", "large snowflake",
+    "red ornament", "heart crystal",
+    "golden toilet", "golden seat", "golden casket", "robot hero", "Nintendo Switch", "wobbling Zipper toy",
+    "coelacanth", "stringfish", "golden trout", "barreleye", "golden stag" };
 static const char* LOADOUT_NAMES[] = { "Mining", "Fishing", "Terraforming", "Custom 1", "Custom 2" };
 
 int main(int argc, char** argv) {

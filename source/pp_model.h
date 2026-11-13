@@ -36,7 +36,7 @@ static const uint16_t ID_EMPTY       = 0xFFFE;
 static const uint16_t ID_MAX_VALID   = 0xFFFC;                  // 0xFFFD is EXTENSION
 static const int      QTY_MIN        = 1;                       // upstream bounds, unchanged
 static const int      QTY_MAX        = 99;
-static const int      FAV_LIMIT      = 80;
+static const int      FAV_LIMIT      = 100;
 static const uint32_t WALLET_GAME_MAX = 99999;                  // warning only, bound unchanged
 
 // Quantity convention of the +4 field.
