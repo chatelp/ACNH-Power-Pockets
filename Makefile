@@ -33,7 +33,7 @@ INCLUDES    := include
 
 APP_TITLE	:=	ACNH Power Pockets
 APP_AUTHOR	:=	Power Pockets fork of cbreezy210
-APP_VERSION	:=	1.1.0
+APP_VERSION	:=	1.1.1
 # Fork of ACNH-Save-Editor 1.4.1 (upstream commit 731c228). The .nro and its SD folder
 # (sdmc:/switch/acnh_power_pockets/) have their own names: nothing is shared with upstream.
 #---------------------------------------------------------------------------------

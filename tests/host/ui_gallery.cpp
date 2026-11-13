@@ -106,7 +106,7 @@ int main(int argc, char** argv) {
     EngineHooks h;
     h.pockets = pockets; h.vals = vals; h.items = &items; h.favorites = &favs; h.stack = &stack; h.limits = &limits; h.glyphs = &glyphs;
     h.saveReady = true; h.editSupported = true; h.loadoutNames = LOADOUT_NAMES; h.loadoutCount = 5;
-    h.sdDir = sd; h.version = "1.1.0";
+    h.sdDir = sd; h.version = "1.1.1";
     h.apply = [&]() { applied = true; return ER_OK; };
     h.restore = [&]() { return ER_OK; };
     TurnipWeek week; week.present = true; week.buy = 98; week.pattern = 1;
