@@ -119,7 +119,7 @@ int main(int argc, char** argv) {
     EngineHooks h;
     h.pockets = pockets; h.vals = vals; h.items = &items; h.favorites = &favs; h.stack = &stack; h.limits = &limits; h.glyphs = &glyphs;
     h.saveReady = true; h.editSupported = true; h.loadoutNames = LOADOUT_NAMES; h.loadoutCount = 5;
-    h.sdDir = sd; h.version = "1.1.1 (harness)";
+    h.sdDir = sd; h.version = "1.2.0 (harness)";
     h.apply = [&]() {
         applyCalls++;
         syncSaveSlotVars(pockets, gSlot, gNewId, gNewCount);
@@ -344,6 +344,49 @@ int main(int argc, char** argv) {
         CHECK(stays);
         CHECK(u.frame(0, 0) && !u.frame(A, A));
         u.shutdown();
+    }
+
+    // ---------------- 30 and 40 slots (pocket upgrades) ----------------
+    {
+        uint8_t pk[POCKETS_BYTES]; memcpy(pk, pockets, sizeof pk);
+        uint8_t bag[POCKETS_BYTES]; for (int s2 = 1; s2 <= 20; s2++) put(bag, s2, ID_EMPTY, 0);
+        put(bag, 1, idOf(items, "iron nugget"), 29); put(bag, 2, idOf(items, "Nook Miles Ticket"), 9);
+        put(bag, 3, idOf(items, "golden shovel"), 0); put(bag, 12, idOf(items, "100 turnips"), 3);
+        put(bag, 20, idOf(items, "cherry"), 9);
+        uint32_t vv[4] = { 100, 200, 300, 400 };
+        EngineHooks x = h;
+        x.pockets = Pockets(pk, bag, 40); x.vals = vv;
+        Ui u; u.init(ren, sd); u.start(x); idle(u);
+        shot("pockets-40-slots");
+        press(u, RIGHT, 3); press(u, DOWN, 9); idle(u);           // slot 40, in the last column
+        shot("pockets-40-slot-40");
+        CHECK(readSlot(x.pockets, 40).id == idOf(items, "cherry"));
+        press(u, RIGHT); idle(u);                                // no column 5: stays on slot 40
+        press(u, A); idle(u); shot("pockets-40-menu"); press(u, B); idle(u);
+        // A 40-slot loadout, previewed in 4 columns.
+        CHECK(loadoutWrite((sd + "l_1.dat").c_str(), x.pockets));
+        CHECK(fileSize((sd + "l_1.dat").c_str()) == 320);
+        press(u, R, 5); press(u, DOWN); idle(u);
+        shot("loadouts-40-slots");
+        press(u, L, 5); idle(u);
+        u.shutdown();
+
+        // The same pockets with 30 slots: the cherry in slot 40 is locked and the
+        // 40-slot loadout can't be loaded.
+        uint8_t pk3[POCKETS_BYTES]; memcpy(pk3, pockets, sizeof pk3);
+        uint8_t keep[POCKETS_BYTES]; memcpy(keep, bag, sizeof keep);
+        EngineHooks y = h;
+        y.pockets = Pockets(pk3, bag, 30); y.vals = vv;
+        Ui u3; u3.init(ren, sd); u3.start(y); idle(u3);
+        shot("pockets-30-slots");
+        press(u3, R, 5); press(u3, DOWN); idle(u3);
+        shot("loadouts-40-in-30-slots");
+        press(u3, Y); idle(u3);                                  // load: refused with an error dialog
+        shot("loadouts-too-big-refused");
+        press(u3, A); idle(u3);
+        CHECK(memcmp(keep, bag, sizeof keep) == 0 && memcmp(pk3, pockets, sizeof pk3) == 0);
+        u3.shutdown();
+        remove((sd + "l_1.dat").c_str());
     }
 
     // ---------------- Fault injection: every engine hook can fail ----------------

@@ -37,7 +37,7 @@ struct InfoData {
 
 struct EngineHooks {
     // ---- Working data the UI may edit (invariant I1) ----
-    uint8_t*  pockets = nullptr;          // personal + POCKETS_BASE (decrypted)
+    Pockets   pockets;                    // slots 1..20 at personal + 0x37CA8, bag slots 21..40 at 0x37BF0 (decrypted)
     uint32_t* vals = nullptr;             // g_vals[4]
 
     // ---- Context ----

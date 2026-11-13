@@ -34,6 +34,7 @@ typedef std::vector<uint8_t> Bytes;
 // ------------------------------ save layout 3.0.x --------------------------
 static const size_t   P_SZ = 0x74A40, M_SZ = 0x9B0E90, HDR_SZ = 0x300;
 static const uint32_t WALLET = 0x37D60, BANK = 0x6527C, MILES = 0x12718, LOAN = 0x33CBF0, POCKETS = 0x37CA8;
+static const uint32_t BAG = 0x37BF0, BAG_COUNT = 0x37C90;   // slots 21..40 and how many are unlocked
 static const uint32_t HEAL0 = 0x5B3D50, HEAL_STEP = 0x74A40;
 struct Reg { uint32_t off, len; };
 static const Reg P_REGS[] = { { 0x00110, 0x37acc }, { 0x37be0, 0x3ce5c } };      // NHSE FileHashRevision REV_300
@@ -107,7 +108,7 @@ static int  validHashes(const Bytes& b, const Reg* r, size_t n) {
 }
 
 // What the app is expected to hold / write: 20 pocket records + 4 values.
-struct Model { uint8_t pockets[pp::POCKETS_BYTES]; uint32_t vals[4]; };
+struct Model { uint8_t pockets[pp::POCKETS_BYTES]; uint8_t bag[pp::POCKETS_BYTES]; uint32_t vals[4]; };
 static void rec(uint8_t* pockets, int slot, uint16_t id, uint8_t sys, uint8_t wrap, uint16_t raw, uint16_t wear) {
     uint8_t* r = pockets + (slot - 1) * 8;
     r[0] = (uint8_t)id; r[1] = (uint8_t)(id >> 8); r[2] = sys; r[3] = wrap; r[4] = (uint8_t)raw; r[5] = (uint8_t)(raw >> 8); r[6] = (uint8_t)wear; r[7] = (uint8_t)(wear >> 8);
@@ -137,6 +138,9 @@ static Save makeSave(size_t pSz = P_SZ, size_t mSz = M_SZ) {
     rec(m.pockets, 19, pp::ID_EMPTY, 0, 0, 5, 0);            // "dirty" empty record: must be left alone
     memcpy(&s.pPlain[POCKETS], m.pockets, sizeof m.pockets);
     wr32(&s.pPlain[POCKETS + 160], 20);                       // slot count that follows the 20 records
+    for (int i = 1; i <= 20; i++) rec(m.bag, i, pp::ID_EMPTY, 0, 0, 0, 0);
+    memcpy(&s.pPlain[BAG], m.bag, sizeof m.bag);
+    wr32(&s.pPlain[BAG_COUNT], 0);                            // no pocket upgrade: 20 slots
     m.vals[0] = 12345; m.vals[1] = 4800000; m.vals[2] = 230500; m.vals[3] = 98000;
     encStore(&s.pPlain[WALLET], m.vals[0]); encStore(&s.pPlain[BANK], m.vals[1]);
     encStore(&s.pPlain[MILES], m.vals[2]);  encStore(&s.mPlain[LOAN], m.vals[3]);
@@ -158,6 +162,7 @@ static Save makeSave(size_t pSz = P_SZ, size_t mSz = M_SZ) {
 // The state Apply must produce from `before` and the model: nothing else may change.
 static void expectApply(Bytes& p, Bytes& m, const Model& mo) {
     memcpy(&p[POCKETS], mo.pockets, sizeof mo.pockets);
+    memcpy(&p[BAG], mo.bag, sizeof mo.bag);
     encStore(&p[WALLET], mo.vals[0]); encStore(&p[BANK], mo.vals[1]); encStore(&p[MILES], mo.vals[2]);
     encStore(&m[LOAN], mo.vals[3]);
     for (int i = 0; i < 8; i++) wr32(&m[HEAL0 + i * HEAL_STEP], 0);
@@ -814,6 +819,76 @@ static void scnTurnips(const Save& s0) {
     });
 }
 
+// Pocket upgrades: the bag counter says 10 or 20 more slots. Items go into the bag block
+// (slots 21..40), locked slots are never touched, the counter is never written, and the
+// SD backup of a save with bag edits is still accepted for restoring.
+static Save bagSave(const Save& s0, uint32_t bagCount) {
+    Save s = s0;
+    for (int i = 1; i <= 20; i++) rec(s.model.bag, i, pp::ID_EMPTY, 0, 0, 0, 0);
+    rec(s.model.bag, 3, ID_WOOD, 0, 0, 9, 0);                // slot 23: 10 wood
+    rec(s.model.bag, 15, ID_APPLE, 0, 0, 4, 0);              // slot 35: locked with 30 slots
+    memcpy(&s.pPlain[BAG], s.model.bag, sizeof s.model.bag);
+    wr32(&s.pPlain[BAG_COUNT], bagCount);
+    fixHashes(s.pPlain, P_REGS, 2);
+    encrypt(s);
+    return s;
+}
+static void scnBag(const Save& s0) {
+    g_scn = "bag_40_slots";
+    static Save s; s = bagSave(s0, 20);
+    World w = makeWorld(g_scn, s);
+    launch(w, "session", [&]() {
+        static Model m; m = s.model;
+        idle(2); SEE("40 slots");
+        enterIdFromOccupied("16DB", false);                  // cursor on slot 1, take a ticket
+        press(RIGHT, 2); idle(1); press(Y); idle(2);          // column 3, row 1 = slot 21
+        rec(m.bag, 1, ID_NMT, 0, 0, pp::qtyToRaw(1), 0);
+        SEE("in slot 21");
+        press(RIGHT); press(DOWN, 9); idle(1); press(Y); idle(2);   // column 4, row 10 = slot 40
+        rec(m.bag, 20, ID_NMT, 0, 0, pp::qtyToRaw(1), 0);
+        SEE("in slot 40");
+        // After a place the cursor goes to the next empty slot: slot 5 (slots 1..4 are full).
+        press(RIGHT, 2); press(UP, 2); idle(1); press(A); press(UP); press(A); idle(2);   // slot 23 (wood) > Clear slot
+        rec(m.bag, 3, pp::ID_EMPTY, 0, 0, 0, 0);
+        SEE("Slot 23 cleared");
+        applyFromPanel();
+        SEE("Changes applied");
+        probe([&, mo = m]() {
+            Bytes eP = s.pPlain, eM = s.mPlain; expectApply(eP, eM, mo);
+            CHECK_SAME(nandPlainP(s), eP); CHECK_SAME(nandPlainM(s), eM);
+            { Bytes p1 = nandPlainP(s); CHECK(rd32(&p1[BAG_COUNT]) == 20); }   // counter untouched
+            CHECK(validHashes(nandPlainP(s), P_REGS, 2) == 2);
+        });
+        panel(P_POCKETS, P_SYSTEM);
+        systemRow(ROW_RESTORE);
+        SEE("Restore the SD backup?");                         // a backup with bag edits is accepted
+        confirmHold();
+        SEE("Save restored");
+        probe([&]() { CHECK_SAME(slurp(NAND_P), s.pEnc); CHECK_SAME(slurp(NAND_M), s.mEnc); });
+        panel(P_SYSTEM, P_POCKETS);
+        quitFromPanel();
+    });
+    // 30 slots: slots 31..40 are not shown and never written, even when they hold items.
+    static Save s30; s30 = bagSave(s0, 10);
+    World w30 = makeWorld("bag_30_slots", s30);
+    launch(w30, "session", [&]() {
+        static Model m; m = s30.model;
+        idle(2); SEE("30 slots");                             // slot 35 (an apple) is locked: not shown
+        enterIdFromOccupied("16DB", false);
+        press(LEFT); press(RIGHT, 4); idle(1);                // only 3 columns: the cursor stops on slot 21
+        press(Y); idle(2); rec(m.bag, 1, ID_NMT, 0, 0, pp::qtyToRaw(1), 0);
+        SEE("in slot 21");
+        applyFromPanel();
+        SEE("Changes applied");
+        probe([&, mo = m]() {
+            Bytes eP = s30.pPlain, eM = s30.mPlain; expectApply(eP, eM, mo);
+            CHECK_SAME(nandPlainP(s30), eP);
+            { Bytes p1 = nandPlainP(s30); CHECK((p1[BAG + 14 * 8] | (p1[BAG + 14 * 8 + 1] << 8)) == ID_APPLE); }   // locked slot 35 kept as it was
+        });
+        quitFromPanel();
+    });
+}
+
 // L / R wrap around the panels: L on Pockets opens System, R on System comes back.
 static void scnPanelsWrap(const Save& s0) {
     g_scn = "panels_wrap";
@@ -973,6 +1048,7 @@ int main(int argc, char** argv) {
         { "read_only_save", [](const Save&) { scnReadOnly(); } },
         { "turnips_read_only", scnTurnips },
         { "panels_wrap", scnPanelsWrap },
+        { "bag_slots", scnBag },
         { "launch_guards", scnGuards },
         { "review_revert_focus", scnReviewRevertFocus },
         { "commit_fails", scnCommitFailsKnown },

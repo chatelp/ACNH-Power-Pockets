@@ -266,6 +266,57 @@ static void testTurnips() {
     CHECK(h.turnips == 1080 && h.slots == 3 && h.spoiledSlots == 1);
 }
 
+static void testBagSlots() {
+    printf("30 / 40 slots (pocket upgrades)\n");
+    CHECK(slotsFromBagCount(0) == 20 && slotsFromBagCount(10) == 30 && slotsFromBagCount(20) == 40);
+    CHECK(slotsFromBagCount(5) == 20 && slotsFromBagCount(30) == 20 && slotsFromBagCount(0xFFFFFFFFu) == 20);
+    uint8_t m[POCKETS_BYTES], b[POCKETS_BYTES + 8];          // 8 guard bytes after the bag block
+    emptyPockets(m); emptyPockets(b); memset(b + POCKETS_BYTES, 0x5A, 8);
+    for (int s = 1; s <= 20; s++) putRaw(m, s, 0x0AD0, 29, 0, 0);   // slots 1..20 full
+
+    // 20 slots (bag not unlocked, or no bag pointer): nothing beyond 20 is reachable.
+    Pockets p20(m, b, 20), pNoBag(m, nullptr, 40);
+    CHECK(p20.count == 20 && pNoBag.count == 20 && nextEmptySlot(p20, 1) == -1);
+    CHECK(!placeInEmpty(p20, 21, 0x16DB, 0) && !clearSlot(p20, 21));
+
+    // 30 slots: 21..30 usable, 31..40 never touched.
+    Pockets p30(m, b, 30);
+    CHECK(p30.count == 30 && countEmpty(p30) == 10 && countItems(p30) == 20);
+    CHECK(nextEmptySlot(p30, 5) == 21 && nextEmptySlot(p30, 25) == 25);
+    CHECK(placeInEmpty(p30, 21, 0x16DB, qtyToRaw(9)));
+    CHECK(readSlot(Pockets(b), 1).id == 0x16DB && readSlot(p30, 21).raw == 8);   // slot 21 = first record of the bag block
+    CHECK(!placeInEmpty(p30, 31, 0x16DB, 0) && !setSlotRaw(p30, 31, 3) && !clearSlot(p30, 31));
+    CHECK(readSlot(p30, 31).id == ID_EMPTY && readSlot(Pockets(b), 11).id == ID_EMPTY);
+    for (int s = 22; s <= 30; s++) CHECK(placeInEmpty(p30, s, 0x08A5, 0));
+    CHECK(nextEmptySlot(p30, 1) == -1);                      // full at 30, slot 31 not offered
+
+    // 40 slots: the last record of the bag, and nothing after it.
+    Pockets p40(m, b, 40);
+    CHECK(nextEmptySlot(p40, 1) == 31 && placeInEmpty(p40, 40, 0x09C4, 0));
+    CHECK(readSlot(Pockets(b), 20).id == 0x09C4);
+    bool guard = true; for (int i = 0; i < 8; i++) if (b[POCKETS_BYTES + i] != 0x5A) guard = false;
+    CHECK(guard && !p40.valid(41) && !p40.valid(0));
+
+    // Base / pending / revert / discard across both blocks.
+    Base base; uint32_t vals[4] = { 1, 2, 3, 4 };
+    snapshotBase(base, p40, vals);
+    CHECK(base.count == 40 && baseSlot(base, 40).id == 0x09C4 && baseSlot(base, 41).id == ID_EMPTY);
+    CHECK(pendingPockets(base, p40) == 0);
+    CHECK(clearSlot(p40, 40) && setSlotRaw(p40, 21, qtyToRaw(3)) && clearSlot(p40, 2));
+    CHECK(pendingPockets(base, p40) == 3 && slotModified(base, p40, 40) && slotModified(base, p40, 21));
+    revertSlot(base, p40, 40);
+    CHECK(readSlot(p40, 40).id == 0x09C4 && pendingPockets(base, p40) == 2);
+    discardAll(base, p40, vals);
+    CHECK(pendingPockets(base, p40) == 0 && readSlot(p40, 21).raw == 8 && readSlot(p40, 2).id == 0x0AD0);
+
+    // Image round trip and turnips across both blocks.
+    uint8_t img[ALL_SLOTS_BYTES]; toImage(p30, img);
+    CHECK(lastUsedSlot(img) == 30 && readSlot(imageView(img, 40), 31).id == ID_EMPTY);   // slots beyond 30 left out
+    CHECK(clearSlot(p40, 39) == false);
+    CHECK(placeInEmpty(p40, 39, ID_TURNIPS_100, qtyToRaw(2)));
+    CHECK(turnipsInPockets(p40).turnips == 200 && turnipsInPockets(p30).turnips == 0);
+}
+
 static const char* BUILTIN[] = { "gold roses", "pearl", "golden axe", "does not exist" };
 
 static void testFavorites() {
@@ -335,25 +386,36 @@ static void testFavorites() {
 static void testLoadoutsFiles() {
     printf("loadouts and SD helpers\n");
     uint8_t p[POCKETS_BYTES]; emptyPockets(p); putRaw(p, 7, 0x0002, 10, 0, 0);
-    CHECK(loadoutWrite(path("l_0.dat").c_str(), p));
-    uint8_t q[POCKETS_BYTES]; memset(q, 0xAA, sizeof q);
-    CHECK(loadoutRead(path("l_0.dat").c_str(), q) && memcmp(p, q, POCKETS_BYTES) == 0);
+    CHECK(loadoutWrite(path("l_0.dat").c_str(), p));          // 20 slots: the 160-byte format
+    CHECK(fileSize(path("l_0.dat").c_str()) == 160);
+    uint8_t q[ALL_SLOTS_BYTES]; memset(q, 0xAA, sizeof q); int n = 0;
+    CHECK(loadoutRead(path("l_0.dat").c_str(), q, n) && n == 20 && memcmp(p, q, POCKETS_BYTES) == 0);
+    CHECK(lastUsedSlot(q) == 7 && readSlot(imageView(q, 40), 21).id == ID_EMPTY);   // slots 21..40 come back empty
     writeText(path("l_1.dat"), "short");
     memset(q, 0xAA, sizeof q);
-    CHECK(!loadoutRead(path("l_1.dat").c_str(), q));
-    bool untouched = true; for (int i = 0; i < POCKETS_BYTES; i++) if (q[i] != 0xAA) untouched = false;
+    CHECK(!loadoutRead(path("l_1.dat").c_str(), q, n));
+    bool untouched = true; for (int i = 0; i < ALL_SLOTS_BYTES; i++) if (q[i] != 0xAA) untouched = false;
     CHECK(untouched);                                        // I12
-    CHECK(!loadoutRead(path("nope.dat").c_str(), q));
-    // A 160-byte file that is not a pocket snapshot (EXTENSION / 0xFFFF ids) is refused too.
+    CHECK(!loadoutRead(path("nope.dat").c_str(), q, n));
+    // A file that is not a pocket snapshot (EXTENSION / 0xFFFF ids) is refused too.
     uint8_t bad[POCKETS_BYTES]; emptyPockets(bad); putRaw(bad, 5, 0xFFFD, 1, 0, 0);
-    CHECK(!pocketsPlausible(bad) && pocketsPlausible(p));
+    CHECK(!pocketsPlausible(bad, 20) && pocketsPlausible(p, 20) && !pocketsPlausible(p, 0) && !pocketsPlausible(nullptr, 20));
     CHECK(loadoutWrite(path("l_2.dat").c_str(), bad));
     memset(q, 0xAA, sizeof q);
-    CHECK(!loadoutRead(path("l_2.dat").c_str(), q));
-    untouched = true; for (int i = 0; i < POCKETS_BYTES; i++) if (q[i] != 0xAA) untouched = false;
+    CHECK(!loadoutRead(path("l_2.dat").c_str(), q, n));
+    untouched = true; for (int i = 0; i < ALL_SLOTS_BYTES; i++) if (q[i] != 0xAA) untouched = false;
     CHECK(untouched);
     memset(bad, 0xFF, sizeof bad);
-    CHECK(!pocketsPlausible(bad));
+    CHECK(!pocketsPlausible(bad, 20));
+    // 40 slots: the 320-byte format, read back slot for slot.
+    uint8_t m40[POCKETS_BYTES], b40[POCKETS_BYTES]; emptyPockets(m40); emptyPockets(b40);
+    putRaw(m40, 1, 0x0AD0, 29, 0, 0); putRaw(b40, 20, 0x16DB, 8, 0, 0);   // slot 1 and slot 40
+    Pockets pk40(m40, b40, 40);
+    CHECK(loadoutWrite(path("l_3.dat").c_str(), pk40) && fileSize(path("l_3.dat").c_str()) == 320);
+    CHECK(loadoutRead(path("l_3.dat").c_str(), q, n) && n == 40 && lastUsedSlot(q) == 40);
+    CHECK(readSlot(imageView(q, 40), 40).id == 0x16DB && readSlot(imageView(q, 40), 1).raw == 29);
+    { FILE* f = fopen(path("l_4.dat").c_str(), "wb"); uint8_t z[321]; memset(z, 0, sizeof z); fwrite(z, 1, sizeof z, f); fclose(f); }
+    CHECK(!loadoutRead(path("l_4.dat").c_str(), q, n));      // neither 160 nor 320 bytes
     CHECK(copyFile(path("l_0.dat").c_str(), path("copy.dat").c_str()) && fileSize(path("copy.dat").c_str()) == 160);
     CHECK(fileSize(path("nope.dat").c_str()) == -1);
 }
@@ -445,9 +507,9 @@ static void testFuzzParsers() {
         }
         StackRules r; r.build(items, np.c_str());
         if (r.singleCount() > (int)items.size() || r.isSingle(0xFFFF) || r.isSingle((uint16_t)items.size())) ok = false;
-        uint8_t q[POCKETS_BYTES]; memset(q, 0xAA, sizeof q);
-        if (loadoutRead(lp.c_str(), q)) { if (!pocketsPlausible(q)) ok = false; }
-        else for (int i = 0; i < POCKETS_BYTES; i++) if (q[i] != 0xAA) ok = false;
+        uint8_t q[ALL_SLOTS_BYTES]; memset(q, 0xAA, sizeof q); int qn = 0;
+        if (loadoutRead(lp.c_str(), q, qn)) { if (!pocketsPlausible(q, SLOT_MAX)) ok = false; }
+        else for (int i = 0; i < ALL_SLOTS_BYTES; i++) if (q[i] != 0xAA) ok = false;
         stateMarkMatches(mp.c_str(), "0123456789abcdef");
         uint16_t id = 0; parseHexId(d, id); searchItems(items, d.substr(0, 40));
         if (!ok) printf("  fuzz failure at iteration %d\n", it);
@@ -600,6 +662,7 @@ int main() {
     testItems();
     testStackRules();
     testTurnips();
+    testBagSlots();
     testFavorites();
     testLoadoutsFiles();
     testRegions();

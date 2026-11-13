@@ -106,7 +106,7 @@ int main(int argc, char** argv) {
     EngineHooks h;
     h.pockets = pockets; h.vals = vals; h.items = &items; h.favorites = &favs; h.stack = &stack; h.limits = &limits; h.glyphs = &glyphs;
     h.saveReady = true; h.editSupported = true; h.loadoutNames = LOADOUT_NAMES; h.loadoutCount = 5;
-    h.sdDir = sd; h.version = "1.1.1";
+    h.sdDir = sd; h.version = "1.2.0";
     h.apply = [&]() { applied = true; return ER_OK; };
     h.restore = [&]() { return ER_OK; };
     TurnipWeek week; week.present = true; week.buy = 98; week.pattern = 1;
@@ -202,5 +202,26 @@ int main(int argc, char** argv) {
 
     (void)L;
     ui.shutdown();
+
+    // Pockets with the two upgrades (40 slots): the grid grows to 4 columns.
+    {
+        uint8_t bag[POCKETS_BYTES]; clearAll(bag);
+        put(bag, 1, I("iron nugget"), 29);   put(bag, 2, I("gold nugget"), 9);  put(bag, 3, I("clay"), 19);
+        put(bag, 4, I("stone"), 29);         put(bag, 5, I("tree branch"), 14); put(bag, 6, I("hardwood"), 29);
+        put(bag, 11, I("apple"), 9);         put(bag, 12, I("orange"), 9);      put(bag, 13, I("coconut"), 4);
+        put(bag, 14, I("pumpkin start"), 0);
+        EngineHooks h40 = h;
+        h40.pockets = Pockets(pockets, bag, 40);
+        h40.info = [&](InfoData& d) {
+            d.saveSizeOk = true; d.personalSize = 0x74A40; d.mainSize = 0x9B0E90;
+            d.pRegOk = d.pRegCount = 2; d.mRegOk = d.mRegCount = 19; d.poisonAllZero = true;
+            d.backupPersonal = d.backupMain = d.sessionPersonal = d.sessionMain = 1;
+        };
+        Ui u40; u40.init(ren, sd); u40.start(h40); idle(u40);
+        press(u40, RIGHT, 2); press(u40, DOWN, 3); idle(u40);
+        settle(u40);
+        shot("pockets-40");
+        u40.shutdown();
+    }
     return 0;
 }

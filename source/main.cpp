@@ -694,7 +694,13 @@ int main(int argc, char** argv) {
     auto markWritten = [&]() { pp::writeStateMark(markPath.c_str(), currentSig(), sessionBackupDone); };
 
     pp::EngineHooks hooks;
-    hooks.pockets = saveReady ? personal + POCKETS_BASE : nullptr;
+    // Slots 1..20 always; the bag (slots 21..40) only on a known 3.0.x layout, as far as
+    // the game's own counter says it is unlocked. The counter is read, never written.
+    static_assert(POCKETS_BASE == pp::POCKETS_OFF_30, "pocket block offset");
+    const int pocketSlots = editSupported ? pp::slotsFromBagCount(LE32(personal + pp::BAG_COUNT_OFF_30)) : pp::SLOT_COUNT;
+    hooks.pockets = !saveReady ? pp::Pockets()
+                  : pocketSlots > pp::SLOT_COUNT ? pp::Pockets(personal + POCKETS_BASE, personal + pp::BAG_OFF_30, pocketSlots)
+                  : pp::Pockets(personal + POCKETS_BASE);
     hooks.vals = g_vals;
     hooks.items = &g_allItems;
     hooks.favorites = &favorites;
@@ -769,7 +775,8 @@ int main(int argc, char** argv) {
                 auto fieldOk = [](const uint8_t* b, uint32_t off) { return b[off + 7] == CalcChecksum(LE32(b + off)); };
                 if (!fieldOk(cp, WALLET_OFF) || !fieldOk(cp, BANK_OFF) || !fieldOk(cp, MILES_OFF) || !fieldOk(cm, LOAN_OFF))
                     res = pp::BC_CORRUPT;
-                std::vector<pp::ByteRange> okP = { { POCKETS_BASE, (uint32_t)pp::POCKETS_BYTES }, { WALLET_OFF, 8 }, { BANK_OFF, 8 }, { MILES_OFF, 8 } };
+                std::vector<pp::ByteRange> okP = { { POCKETS_BASE, (uint32_t)pp::POCKETS_BYTES }, { pp::BAG_OFF_30, (uint32_t)pp::POCKETS_BYTES },
+                                                   { WALLET_OFF, 8 }, { BANK_OFF, 8 }, { MILES_OFF, 8 } };
                 std::vector<pp::ByteRange> okM = { { LOAN_OFF, 8 } };
                 for (int i = 0; i < 8; i++) okM.push_back({ (uint32_t)(0x5B3D50 + (i * 0x74A40)), 4 });
                 if (editSupported) {                          // the hash words follow the data they protect

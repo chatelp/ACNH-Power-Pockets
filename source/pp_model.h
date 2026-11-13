@@ -27,9 +27,11 @@ namespace pp {
 //   +4 u16 Count    (stack count, or variant / recipe id for non-stackables)
 //   +6 u16 UseCount (tool wear)
 // ---------------------------------------------------------------------------
-static const int      SLOT_COUNT     = 20;
+static const int      SLOT_COUNT     = 20;                      // slots 1..20: the pocket block
+static const int      SLOT_MAX       = 40;                      // with the bag fully unlocked
 static const int      REC_SIZE       = 8;
-static const int      POCKETS_BYTES  = SLOT_COUNT * REC_SIZE;   // 160
+static const int      POCKETS_BYTES  = SLOT_COUNT * REC_SIZE;   // 160: one block (pocket or bag)
+static const int      ALL_SLOTS_BYTES = SLOT_MAX * REC_SIZE;    // 320: slots 1..40 back to back
 static const uint16_t ID_EMPTY       = 0xFFFE;
 static const uint16_t ID_MAX_VALID   = 0xFFFC;                  // 0xFFFD is EXTENSION
 static const int      QTY_MIN        = 1;                       // upstream bounds, unchanged
@@ -57,43 +59,72 @@ struct Item {
 };
 
 // --------------------------------- slots -----------------------------------
-// All slot numbers are 1..20. Functions refuse anything else (returns false /
-// does nothing), so a bad index can never write outside the 160-byte buffer.
+// The game keeps the inventory in two blocks of 20 records in personal.dat
+// (3.0.x, NHSE PersonalOffsets30):
+//   0x37CA8  slots 1..20  ("Pocket"), followed by a u32 = 20
+//   0x37BF0  slots 21..40 ("Bag"),    followed by a u32 = how many of them are
+//            unlocked: 0, 10 or 20 (pocket upgrades). Read, never written.
+// A Pockets view covers the slots the player really has. Slot numbers are
+// 1..count; functions refuse anything else (returns false / does nothing), so a
+// bad index can never write outside the two 160-byte blocks, and never into a
+// locked bag slot.
+static const uint32_t POCKETS_OFF_30   = 0x37CA8;
+static const uint32_t BAG_OFF_30       = 0x37BF0;
+static const uint32_t BAG_COUNT_OFF_30 = 0x37C90;
+// Usable slots from the bag counter: 20, 30 or 40; 20 for any other value.
+int slotsFromBagCount(uint32_t bagCount);
+
+struct Pockets {
+    uint8_t* main = nullptr;           // slots 1..20
+    uint8_t* bag = nullptr;            // slots 21..40 (nullptr when count is 20)
+    int      count = SLOT_COUNT;       // 20, 30 or 40
+    Pockets() {}
+    Pockets(uint8_t* m) : main(m) {}   // a plain 160-byte block: 20 slots
+    Pockets(uint8_t* m, uint8_t* b, int n) : main(m), bag(b), count(b && (n == 30 || n == 40) ? n : SLOT_COUNT) {}
+    bool valid(int slot) const { return main && slot >= 1 && slot <= count; }
+    uint8_t* rec(int slot) const { return slot <= SLOT_COUNT ? main + (slot - 1) * REC_SIZE : bag + (slot - SLOT_COUNT - 1) * REC_SIZE; }
+};
+// A contiguous 320-byte image (slots 1..40 back to back) seen as Pockets.
+inline Pockets imageView(uint8_t* img, int count) { return count == SLOT_COUNT ? Pockets(img) : Pockets(img, img + POCKETS_BYTES, count); }
 struct SlotRec { uint16_t id; uint16_t raw; };
 
-bool     validSlot(int slot);
+bool     validSlot(int slot);                             // 1..20: the engine's g_slot range
 bool     validPlaceId(uint16_t id);                       // 0x0000..0xFFFC
-SlotRec  readSlot(const uint8_t* pockets, int slot);
-bool     slotEmpty(const uint8_t* pockets, int slot);
-int      countEmpty(const uint8_t* pockets);
+SlotRec  readSlot(const Pockets& p, int slot);
+bool     slotEmpty(const Pockets& p, int slot);
+int      countEmpty(const Pockets& p);
 // First empty slot at or after `from`, wrapping around; -1 if the pockets are full.
-int      nextEmptySlot(const uint8_t* pockets, int from);
+int      nextEmptySlot(const Pockets& p, int from);
 // Writes the clean record {id, 0, 0, raw, 0} - ONLY into an empty slot.
-bool     placeInEmpty(uint8_t* pockets, int slot, uint16_t id, uint16_t raw);
+bool     placeInEmpty(const Pockets& p, int slot, uint16_t id, uint16_t raw);
 // Writes the NHSE empty record FE FF 00 00 00 00 00 00. Returns false if already empty.
-bool     clearSlot(uint8_t* pockets, int slot);
+bool     clearSlot(const Pockets& p, int slot);
 // Changes only the +4 field of an occupied slot.
-bool     setSlotRaw(uint8_t* pockets, int slot, uint16_t raw);
-int      countItems(const uint8_t* pockets);              // non-empty slots
+bool     setSlotRaw(const Pockets& p, int slot, uint16_t raw);
+int      countItems(const Pockets& p);                    // non-empty slots
+// Copies the usable slots into a 320-byte image (slots beyond count: empty records).
+void     toImage(const Pockets& p, uint8_t img[ALL_SLOTS_BYTES]);
 
 // ----------------------------- base / pending ------------------------------
 // The "Base" is the decrypted state last read from / written to the console.
 // Pending changes = Working state (pocket buffer + g_vals) != Base.
 struct Base {
-    uint8_t  pockets[POCKETS_BYTES];
+    uint8_t  pockets[ALL_SLOTS_BYTES];   // image: slots 1..40 back to back
+    int      count;
     uint32_t vals[4];
     bool     valid;
 };
 
-void snapshotBase(Base& b, const uint8_t* pockets, const uint32_t* vals);
-bool slotModified(const Base& b, const uint8_t* pockets, int slot);
-bool valModified(const Base& b, const uint32_t* vals, int idx);
-int  pendingPockets(const Base& b, const uint8_t* pockets);
-int  pendingVals(const Base& b, const uint32_t* vals);
-int  pendingCount(const Base& b, const uint8_t* pockets, const uint32_t* vals);
-void revertSlot(const Base& b, uint8_t* pockets, int slot);
-void revertVal(const Base& b, uint32_t* vals, int idx);
-void discardAll(const Base& b, uint8_t* pockets, uint32_t* vals);
+void    snapshotBase(Base& b, const Pockets& p, const uint32_t* vals);
+SlotRec baseSlot(const Base& b, int slot);
+bool    slotModified(const Base& b, const Pockets& p, int slot);
+bool    valModified(const Base& b, const uint32_t* vals, int idx);
+int     pendingPockets(const Base& b, const Pockets& p);
+int     pendingVals(const Base& b, const uint32_t* vals);
+int     pendingCount(const Base& b, const Pockets& p, const uint32_t* vals);
+void    revertSlot(const Base& b, const Pockets& p, int slot);
+void    revertVal(const Base& b, uint32_t* vals, int idx);
+void    discardAll(const Base& b, const Pockets& p, uint32_t* vals);
 
 // Invariant I2: called immediately before doSave(). doSave() writes
 // g_newId/g_newCount into slot g_slot on top of the buffer copy; after this
@@ -268,14 +299,20 @@ private:
 };
 
 // --------------------------------- loadouts --------------------------------
+// A loadout file is a pocket image: 160 bytes (slots 1..20, the format of
+// upstream and of versions before 1.2.0) or 320 bytes (slots 1..40).
 // True when every record holds a placeable id or the empty marker: a loadout
 // file with 0xFFFD (EXTENSION) or 0xFFFF in a slot is not a pocket snapshot.
-bool pocketsPlausible(const uint8_t* pockets);
-// Reads exactly 160 bytes into `out`; returns false (and leaves `out` untouched
-// for the caller's working buffer) on a missing, truncated or implausible file
-// (invariant I12).
-bool loadoutRead(const char* path, uint8_t out[POCKETS_BYTES]);
-bool loadoutWrite(const char* path, const uint8_t* pockets);
+bool pocketsPlausible(const uint8_t* img, int slots);
+// Reads a 160- or 320-byte file into a 320-byte image (slots 21..40 empty for a
+// 160-byte file) and sets `slots` to 20 or 40. Returns false (and leaves `out`
+// untouched) on a missing, truncated or implausible file (invariant I12).
+bool loadoutRead(const char* path, uint8_t out[ALL_SLOTS_BYTES], int& slots);
+// Highest occupied slot of an image (0 when empty).
+int  lastUsedSlot(const uint8_t img[ALL_SLOTS_BYTES]);
+// Writes 160 bytes when the pockets have 20 slots (readable by older versions),
+// else the 320-byte image.
+bool loadoutWrite(const char* path, const Pockets& p);
 
 // ------------------------------- SD file utils -----------------------------
 bool fileExists(const char* path);
@@ -349,7 +386,7 @@ void civilFromDays(long days, int& year, int& month, int& day);
 // each slot holds up to 10 bundles. 0x0A52 = spoiled turnips (worth nothing).
 static const uint16_t ID_TURNIPS_10 = 0x0A48, ID_TURNIPS_100 = 0x0A51, ID_TURNIPS_SPOILED = 0x0A52;
 struct TurnipHold { long turnips = 0; int slots = 0; int spoiledSlots = 0; };
-TurnipHold turnipsInPockets(const uint8_t* pockets);
+TurnipHold turnipsInPockets(const Pockets& p);
 
 // Read-only diagnostics.
 struct RegionRef { uint32_t off; uint32_t len; };

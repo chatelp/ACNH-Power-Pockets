@@ -14,7 +14,7 @@
 
 **Fill your pockets fast, and see every change before a single byte is written.**
 
-ACNH Power Pockets is a homebrew app for the Nintendo Switch (Atmosphère). It edits the 20 pocket slots, Bells, Nook Miles and the house loan of the primary resident, directly on the console. It also shows this week's turnip prices, read from the save without changing it.
+ACNH Power Pockets is a homebrew app for the Nintendo Switch (Atmosphère). It edits the pocket slots (20, 30 or 40, as many as you have unlocked), Bells, Nook Miles and the house loan of the primary resident, directly on the console. It also shows this week's turnip prices, read from the save without changing it.
 
 It is a fork of [ACNH-Save-Editor](https://github.com/cbreezy210/ACNH-Save-Editor) by cbreezy210. The save engine is the upstream one: the only thing changed in it is the name of the SD folder where it keeps its backups. The interface is new, built around inventory work. See [Where it comes from](#where-it-comes-from).
 
@@ -42,6 +42,10 @@ Seven panels, switched with **L** and **R**. **A** opens a menu of actions for w
 ### Ten slots in ten presses
 
 Pick an item once, from your favorites, the catalog, or your own pockets. Each press of **Y** drops it in the next empty slot. Occupied slots are never overwritten: replacing an item takes an explicit *Clear slot* first.
+
+With the pocket upgrades from Nook's Cranny, the grid shows your 30 or 40 slots. The app reads how many you have from the save and never changes that number.
+
+![The Pockets panel with 40 slots in 4 columns](docs/screenshots/pockets-40.png)
 
 | | |
 |---|---|
@@ -141,7 +145,7 @@ Power Pockets has its own file name and its own folder (`switch/acnh_power_pocke
 
 | Panel | For |
 |---|---|
-| **Pockets** | The 20 slots. **Y** places the item in hand in the next empty slot, or picks up the item under the cursor when your hand is empty. Menu: *Fill empty slots*, *Take in hand*, *Quantity…*, *Held quantity…*, *Enter item ID (hex)…*, *Add/Remove favorite*, *Revert to original*, *Clear slot*. |
+| **Pockets** | Your 20, 30 or 40 slots, in 2, 3 or 4 columns of 10. **Y** places the item in hand in the next empty slot, or picks up the item under the cursor when your hand is empty. Menu: *Fill empty slots*, *Take in hand*, *Quantity…*, *Held quantity…*, *Enter item ID (hex)…*, *Add/Remove favorite*, *Revert to original*, *Clear slot*. |
 | **Favorites** | Two groups, each A to Z: **YOURS**, then **BUILT-IN**. **Y** takes one and jumps back to Pockets. A built-in favorite can be hidden, and comes back with *Restore default favorites*. |
 | **Catalog** | Search by name or 4-digit hex ID. ★ marks your favorites. |
 | **Bells & Miles** | Wallet, Bank, Nook Miles, House loan. Step with the D-pad (±1,000 / ±100,000, ×10 after holding 2 s) or type a value. A warning shows above the game's wallet limit (99,999). |
@@ -165,7 +169,7 @@ Power Pockets has its own file name and its own folder (`switch/acnh_power_pocke
 3. Hands your changes to the upstream engine. The engine first writes `backup_*.dat` (the state before this Apply), then writes and commits the save.
 4. Reloads the "original" state only if every step succeeded. If anything fails, your changes stay pending and the app says what happened.
 
-**Before any restore**, the backup is checked on a decrypted copy: sizes and value checksums must match, and it may only differ from the current save where this app writes (pockets, the four values, eight repair fields). Otherwise the restore is refused. A backup that is incomplete, damaged, or older than the game's last save is never offered.
+**Before any restore**, the backup is checked on a decrypted copy: sizes and value checksums must match, and it may only differ from the current save where this app writes (pockets and pocket upgrade slots, the four values, eight repair fields). Otherwise the restore is refused. A backup that is incomplete, damaged, or older than the game's last save is never offered.
 
 **The app's backups are not full backups.** They hold `personal.dat` and `main.dat` only, without the key files. They can't be restored with another tool, and they stop being usable as soon as the game saves again.
 
@@ -175,7 +179,7 @@ Power Pockets has its own file name and its own folder (`switch/acnh_power_pocke
 
 - **One island tested so far.** The game protects each region of the save with a hash and refuses the whole save when one is stale. Power Pockets recomputes all 21 before writing (upstream's unreleased source, which this fork started from, had stopped doing it). Saves written this way were accepted by the game on ACNH 3.0.3, but on one console only. System › Info shows how many hashes match.
 - **Slow start on a save with a stale hash.** If a save was written without its hashes (by an earlier build of this app, for instance), the inherited engine rescans the files at launch. The "Reading the save…" screen can then stay up for tens of seconds, or minutes (estimates, not measured on a console). It is not frozen: wait, then run the Save Doctor.
-- **Only the primary resident** (`Villager0`) and **only the 20 pocket slots** (not the bag expansion).
+- **Only the primary resident** (`Villager0`).
 - **Save versions 3.0.x only**; anything else is read-only.
 - **Turnips panel: not yet checked against the game.** The prices and the pattern are read where NHSE documents them for 3.0.x. The date of the last save, used to tell this week from a past one, is read where the Turnips homebrew reads it. Compare with Daisy Mae and Nook's Cranny the first time.
 - Item names are English, from `items.txt`. About 6 % of the named items have no picture rule yet and show a "?".
@@ -194,7 +198,7 @@ All in `sdmc:/switch/acnh_power_pockets/`.
 | `session_personal.dat`, `session_main.dat` | the app | Pre-edit backup: save as the game last wrote it, before this app's first write |
 | `session_mark.txt` | the app | Tells the app whether the pre-edit backup still matches the console (don't edit) |
 | `damaged_*.dat` | Save Doctor | Copy taken before a repair |
-| `l_0.dat` … `l_4.dat` | the app | Loadouts |
+| `l_0.dat` … `l_4.dat` | the app | Loadouts: 160 bytes for 20 slots (the upstream format), 320 bytes for 30 or 40 slots |
 | `layout_*.dat` | the app | Cache of the save's region layout |
 
 `user_favorites.txt` format:
@@ -276,6 +280,7 @@ What changed is everything you see and touch:
 |---|---|
 | **A** saves to the console immediately | Changes are prepared, reviewed, then applied together |
 | One slot per save | Any number of slots per Apply, **Y** fills the next empty slot |
+| The first 20 pocket slots | All the slots you have unlocked (20, 30 or 40), read from the save |
 | Favorites compiled into the app | Favorites editable in the app, stored on the SD card |
 | Item names only | A picture and a color for each item |
 | Quantity asked for every item, up to 99 | `1/slot` items flagged, no quantity asked; stacks kept within the game's limit for each item |

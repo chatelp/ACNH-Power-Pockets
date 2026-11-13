@@ -127,7 +127,7 @@ struct Op {
     bool mod;               // TEX only: multiply the texture by `c` (tinted glyph mask)
 };
 
-struct LoadoutInfo { bool exists = false, bad = false; int count = 0; uint8_t data[POCKETS_BYTES]; };
+struct LoadoutInfo { bool exists = false, bad = false; int count = 0, slots = 0, lastUsed = 0; uint8_t data[ALL_SLOTS_BYTES]; };
 
 // =============================== implementation ============================
 struct Ui::Impl {
@@ -170,7 +170,7 @@ struct Ui::Impl {
     SDL_Rect gaugeRect { 0, 0, 0, 0 };
 
     // ----------------------------- data helpers ----------------------------
-    bool ready() const { return e && e->saveReady && e->pockets; }
+    bool ready() const { return e && e->saveReady && e->pockets.main; }
     const std::vector<Item>& items() const { static std::vector<Item> none; return (e && e->items) ? *e->items : none; }
     bool itemsLoaded() const { return !items().empty(); }
     bool single(uint16_t id) const { return e && e->stack && e->stack->isSingle(id); }
@@ -194,8 +194,9 @@ struct Ui::Impl {
         if (single(id)) return std::string();      // +4 is a variant there, not a count
         return fmt("%s%d", S::TIMES, rawToQty(raw));
     }
-    std::string slotText(const uint8_t* pockets, int slot) const {
-        SlotRec r = readSlot(pockets, slot);
+    std::string slotText(const Pockets& pockets, int slot) const { return recText(readSlot(pockets, slot)); }
+    std::string baseText(int slot) const { return recText(baseSlot(base, slot)); }
+    std::string recText(SlotRec r) const {
         if (r.id == ID_EMPTY) return S::EMPTY;
         std::string q = qtyText(r.id, r.raw);
         return q.empty() ? itemName(r.id) : itemName(r.id) + " " + q;
@@ -448,17 +449,25 @@ struct Ui::Impl {
     }
 
     // ------------------------------- Pockets -------------------------------
+    // The grid has one column of 10 per row of the game's inventory: 2, 3 or 4 columns.
+    int gridCols() const { return e->pockets.count / 10; }
+    SDL_Rect slotRect(int s) const {
+        const int cols = gridCols(), gap = 16, w = (1168 - (cols - 1) * gap) / cols;
+        const int col = (s - 1) / 10, row = (s - 1) % 10;
+        return { 56 + col * (w + gap), GRID_Y + row * CELL_PITCH, w, CELL_H };
+    }
     void drawPockets() {
-        const uint8_t* p = e->pockets;
+        const Pockets& p = e->pockets;
         if (!degradedBanner()) {
             int changed = pendingPockets(base, p);
-            contextBanner(fmt("20 slots \xC2\xB7 %d used \xC2\xB7 %d changed", countItems(p), changed),
+            contextBanner(fmt("%d slots \xC2\xB7 %d used \xC2\xB7 %d changed", p.count, countItems(p), changed),
                           hand.valid ? "Y places in the next empty slot" : "Take an item in Favorites or Catalog (R)");
         }
         int f = focus[P_POCKETS];
-        for (int s = 1; s <= SLOT_COUNT; s++) {
-            int col = (s - 1) / 10, row = (s - 1) % 10;
-            SDL_Rect r = { col ? 648 : 56, GRID_Y + row * CELL_PITCH, CELL_W, CELL_H };
+        const bool narrow = gridCols() > 2;
+        TTF_Font* nameFont = gridCols() > 3 ? fSmall : fBody;
+        for (int s = 1; s <= p.count; s++) {
+            SDL_Rect r = slotRect(s);
             bool foc = (s - 1) == f;
             bool mod = slotModified(base, p, s);
             SlotRec rec = readSlot(p, s);
@@ -470,7 +479,7 @@ struct Ui::Impl {
             SDL_Rect pill = { r.x, r.y, 44, CELL_H };
             fillRound(pill, 4, mod ? C::modified : (foc ? C::selectBg : C::sunken));
             textC(fSmall, fmt("%d", s), mod ? C::inkStrong : (foc ? C::selectInk : C::textSecond), pill);
-            if (empty) { textMid(fBody, S::EMPTY, foc ? C::selectInk : C::disabledInk, r.x + 56, r); continue; }
+            if (empty) { textMid(nameFont, S::EMPTY, foc ? C::selectInk : C::disabledInk, r.x + 56, r); continue; }
             // Right side: quantity, then badges to its left.
             int rx = r.x + r.w - 16;
             std::string q = qtyText(rec.id, rec.raw);
@@ -481,11 +490,13 @@ struct Ui::Impl {
                     if (icons) { icon(IC_WARN, rx - 20, r.y + 8); rx -= 28; }
                 }
             }
-            if (single(rec.id)) { int bw = badgeWidth(S::BADGE_SINGLE); badge(S::BADGE_SINGLE, C::singleBg, C::singleInk, rx - bw, r.y + 6); rx -= bw + 8; }
-            if (e->favorites && e->favorites->isFav(rec.id)) { rx -= 20; favMark(rx, r.y + 8); rx -= 8; }
+            // Narrow columns (30 or 40 slots): the 1/slot badge and the star make room for the
+            // name; the detail line still says "doesn't stack" and the Favorites panel has the star.
+            if (single(rec.id) && !narrow) { int bw = badgeWidth(S::BADGE_SINGLE); badge(S::BADGE_SINGLE, C::singleBg, C::singleInk, rx - bw, r.y + 6); rx -= bw + 8; }
+            if (e->favorites && e->favorites->isFav(rec.id) && !narrow) { rx -= 20; favMark(rx, r.y + 8); rx -= 8; }
             glyph(rec.id, r.x + 52, r.y + 6);
             const int nx = r.x + 56 + nameShift();
-            textMid(fBody, fit(fBody, itemName(rec.id), rx - nx - 8), ink, nx, r);
+            textMid(nameFont, fit(nameFont, itemName(rec.id), rx - nx - 8), ink, nx, r);
         }
     }
     std::string pocketsDetail() {
@@ -500,16 +511,18 @@ struct Ui::Impl {
             else { std::string n = stackNote(r.id); if (!n.empty()) d += S::DOT + n; }
             if (single(r.id) && r.raw) d += S::DOT + fmt(S::VARIANT_FMT, (int)r.raw);
         } else d += S::DOT + std::string(S::EMPTY);
-        if (slotModified(base, e->pockets, s)) d += S::DOT + std::string("was ") + slotText(base.pockets, s);
+        if (slotModified(base, e->pockets, s)) d += S::DOT + std::string("was ") + baseText(s);
+        if (s > SLOT_COUNT) d += S::DOT + std::string(S::BAG_SLOT);
         return d;
     }
     void pocketsInput(uint64_t down, uint64_t nav) {
         int& f = focus[P_POCKETS];
+        if (f >= e->pockets.count) f = 0;
         int col = f / 10, row = f % 10;
         if ((nav & HidNpadButton_AnyUp) && row > 0) { f--; dirty = true; }
         if ((nav & HidNpadButton_AnyDown) && row < 9) { f++; dirty = true; }
-        if ((nav & HidNpadButton_AnyLeft) && col == 1) { f -= 10; dirty = true; }
-        if ((nav & HidNpadButton_AnyRight) && col == 0) { f += 10; dirty = true; }
+        if ((nav & HidNpadButton_AnyLeft) && col > 0) { f -= 10; dirty = true; }
+        if ((nav & HidNpadButton_AnyRight) && col < gridCols() - 1) { f += 10; dirty = true; }
         if (down & HidNpadButton_Y) pocketsQuick(f + 1);
         else if (down & HidNpadButton_A) pocketsMenu(f + 1);
     }
@@ -607,7 +620,7 @@ struct Ui::Impl {
         fv.run = [this, r, fav]() { if (fav) confirmUnfav(r.id); else addFav(r.id); };
         m.entries.push_back(fv);
         MenuEntry rv; rv.label = S::M_REVERT; rv.enabled = slotModified(base, e->pockets, slot); rv.reason = S::R_NOT_MODIFIED;
-        if (rv.enabled) rv.detail = "was " + slotText(base.pockets, slot);
+        if (rv.enabled) rv.detail = "was " + baseText(slot);
         rv.run = [this, slot]() { revertSlot(base, e->pockets, slot); setToast(T_INFO, S::T_REVERTED); };
         m.entries.push_back(rv);
         MenuEntry cl; cl.label = S::M_CLEAR; cl.destructive = true; cl.enabled = occ; cl.reason = S::R_SLOT_EMPTY;
@@ -616,7 +629,7 @@ struct Ui::Impl {
             if (clearSlot(e->pockets, slot)) setToast(T_INFO, fmt(S::T_CLEARED_FMT, slot));
         };
         m.entries.push_back(cl);
-        m.anchor = { (slot <= 10 ? 56 : 648), GRID_Y + ((slot - 1) % 10) * CELL_PITCH, CELL_W, CELL_H };
+        { SDL_Rect sr = slotRect(slot); m.anchor = { std::min(sr.x, 648), sr.y, std::max(sr.w, CELL_W), sr.h }; }
         push(m);
     }
     void confirmFill() {
@@ -630,7 +643,7 @@ struct Ui::Impl {
         yes.run = [this]() {
             int filled = 0;
             uint16_t raw = placeRaw(single(hand.id), hand.qty);
-            for (int s = 1; s <= SLOT_COUNT; s++) if (placeInEmpty(e->pockets, s, hand.id, raw)) filled++;
+            for (int s = 1; s <= e->pockets.count; s++) if (placeInEmpty(e->pockets, s, hand.id, raw)) filled++;
             setToast(T_INFO, fmt(S::T_FILLED_FMT, filled, plural(filled)));
         };
         m.buttons.push_back(no); m.buttons.push_back(yes); m.safe = 0; m.focus = 0;
@@ -1073,8 +1086,10 @@ struct Ui::Impl {
             lo[i].exists = fileExists(loPath(i).c_str());
             lo[i].count = 0;
             lo[i].bad = false;
-            if (lo[i].exists && loadoutRead(loPath(i).c_str(), lo[i].data)) lo[i].count = countItems(lo[i].data);
-            else if (lo[i].exists) lo[i].bad = true;             // truncated or not a pocket snapshot
+            if (lo[i].exists && loadoutRead(loPath(i).c_str(), lo[i].data, lo[i].slots)) {
+                lo[i].count = countItems(imageView(lo[i].data, SLOT_MAX));
+                lo[i].lastUsed = lastUsedSlot(lo[i].data);
+            } else if (lo[i].exists) lo[i].bad = true;           // truncated or not a pocket snapshot
         }
     }
     void drawLoadouts() {
@@ -1085,7 +1100,7 @@ struct Ui::Impl {
             SDL_Rect r = doubleRow(i, LIST_Y, 560, foc, false);
             SDL_Color ink = foc ? C::selectInk : C::textPrimary;
             text(fBody, e->loadoutNames[i], ink, r.x + 24, r.y + 6);
-            text(fSmall, lo[i].bad ? std::string(S::LO_BAD) : lo[i].exists ? fmt(S::LO_SAVED_FMT, lo[i].count) : std::string(S::LO_EMPTY),
+            text(fSmall, lo[i].bad ? std::string(S::LO_BAD) : lo[i].exists ? fmt(S::LO_SAVED_FMT, lo[i].count, lo[i].slots) : std::string(S::LO_EMPTY),
                  foc ? C::selectInk : (lo[i].bad ? C::warnInk : lo[i].exists ? C::textSecond : C::disabledInk), r.x + 24, r.y + 36);
         }
         SDL_Rect pv = { 640, LIST_Y, 584, 392 };
@@ -1094,21 +1109,35 @@ struct Ui::Impl {
         text(fTitle, e->loadoutNames[f], C::textPrimary, pv.x + 20, pv.y + 12);
         if (!lo[f].exists) { text(fSmall, S::LO_EMPTY, C::disabledInk, pv.x + 20, pv.y + 56); return; }
         if (lo[f].bad) { text(fSmall, S::LO_BAD, C::warnInk, pv.x + 20, pv.y + 56); return; }
-        for (int s = 1; s <= SLOT_COUNT; s++) {
+        // Preview of the slots the file holds (20 or 40); 4 narrow columns for 40.
+        const Pockets lv = imageView(lo[f].data, lo[f].slots);
+        const int cols = lo[f].slots / 10, cw = (pv.w - 40) / cols;
+        for (int s = 1; s <= lo[f].slots; s++) {
             int col = (s - 1) / 10, row = (s - 1) % 10;
-            int x = pv.x + 20 + col * 284, y = pv.y + 56 + row * 32;
-            SlotRec r = readSlot(lo[f].data, s);
-            SDL_Color c = r.id == ID_EMPTY ? C::disabledInk : C::textPrimary;
-            text(fSmall, fmt("%2d", s), C::textSecond, x, y);
-            glyph(r.id, x + 30, y);
-            text(fSmall, fit(fSmall, slotText(lo[f].data, s), 236 - nameShift()), c, x + 32 + nameShift(), y);
+            int x = pv.x + 20 + col * cw, y = pv.y + 56 + row * 32;
+            SlotRec r = readSlot(lv, s);
+            SDL_Color c = r.id == ID_EMPTY ? C::disabledInk : (s > e->pockets.count ? C::warnInk : C::textPrimary);
+            if (cols <= 2) {
+                text(fSmall, fmt("%2d", s), C::textSecond, x, y);
+                glyph(r.id, x + 30, y);
+                text(fSmall, fit(fSmall, slotText(lv, s), cw - 48 - nameShift()), c, x + 32 + nameShift(), y);
+            } else {
+                glyph(r.id, x, y);
+                text(fMicro, fit(fMicro, r.id == ID_EMPTY ? std::string("\xC2\xB7") : slotText(lv, s), cw - 8 - nameShift()), c, x + nameShift(), y + 2);
+            }
         }
+        if (lo[f].lastUsed > e->pockets.count)
+            text(fMicro, fit(fMicro, fmt(S::LO_TOO_BIG_FMT, lo[f].lastUsed, e->pockets.count), pv.w - 40), C::warnInk, pv.x + 20, pv.y + pv.h - 24);
     }
     void loadLoadout(int i) {
         if (!canEdit()) return;
-        uint8_t tmp[POCKETS_BYTES];
-        if (!loadoutRead(loPath(i).c_str(), tmp)) { setToast(T_ERR, S::T_LO_BAD); return; }   // I12
-        memcpy(e->pockets, tmp, POCKETS_BYTES);
+        uint8_t tmp[ALL_SLOTS_BYTES]; int n = 0;
+        if (!loadoutRead(loPath(i).c_str(), tmp, n)) { setToast(T_ERR, S::T_LO_BAD); return; }   // I12
+        // Never a partial load: a loadout with items beyond the slots this player has is refused.
+        int last = lastUsedSlot(tmp);
+        if (last > e->pockets.count) { showError(fmt(S::LO_TOO_BIG_FMT, last, e->pockets.count), S::D_BLOCKED_TITLE); return; }
+        const Pockets src = imageView(tmp, SLOT_MAX);
+        for (int s = 1; s <= e->pockets.count; s++) memcpy(e->pockets.rec(s), src.rec(s), REC_SIZE);
         panel = P_POCKETS;
         setToast(T_INFO, fmt(S::T_LO_LOADED_FMT, e->loadoutNames[i]));
     }
@@ -1214,7 +1243,7 @@ struct Ui::Impl {
         if (!infoValid) refreshInfo();
         std::vector<std::pair<std::string, std::string>> L;
         L.push_back({ "Version", e->version });
-        L.push_back({ "Save files", info.saveSizeOk ? "3.0.x layout (supported)" : "unexpected size (read-only)" });
+        L.push_back({ "Save files", info.saveSizeOk ? fmt("3.0.x layout (supported) \xC2\xB7 %d pocket slots", e->pockets.count) : std::string("unexpected size (read-only)") });
         L.push_back({ "Region hashes", fmt("personal %d/%d \xC2\xB7 main %d/%d", info.pRegOk, info.pRegCount, info.mRegOk, info.mRegCount) });
         L.push_back({ "Heal fields", info.poisonAllZero ? "already 0 (no-op)" : "non-zero (zeroed on Apply)" });
         L.push_back({ "SD backup", (info.backupPersonal >= 0 && info.backupMain >= 0) ? std::string(backupTrusted ? "present" : "present, NOT trusted") : std::string("none") });
@@ -1359,10 +1388,10 @@ struct Ui::Impl {
         int np = pendingPockets(base, e->pockets), nv = pendingVals(base, e->vals);
         if (np) {
             ReviewRow h; h.kind = 0; h.target = fmt("%s \xC2\xB7 %d", S::REVIEW_GROUP_POCKETS, np); m.rows.push_back(h);
-            for (int s = 1; s <= SLOT_COUNT; s++) if (slotModified(base, e->pockets, s)) {
+            for (int s = 1; s <= e->pockets.count; s++) if (slotModified(base, e->pockets, s)) {
                 ReviewRow r; r.kind = 1; r.slot = s; r.target = fmt(S::SLOT_DETAIL_FMT, s);
-                r.before = slotText(base.pockets, s); r.after = slotText(e->pockets, s);
-                r.beforeId = readSlot(base.pockets, s).id; r.afterId = readSlot(e->pockets, s).id;
+                r.before = baseText(s); r.after = slotText(e->pockets, s);
+                r.beforeId = baseSlot(base, s).id; r.afterId = readSlot(e->pockets, s).id;
                 if (r.before == r.after) r.after += " (attributes)";
                 m.rows.push_back(r);
             }

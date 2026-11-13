@@ -30,75 +30,87 @@ uint16_t placeRaw(bool single, int qty) { return single ? 0 : qtyToRaw(qty); }
 // ---------------------------------- slots ----------------------------------
 bool validSlot(int slot) { return slot >= 1 && slot <= SLOT_COUNT; }
 bool validPlaceId(uint16_t id) { return id <= ID_MAX_VALID; }
+int slotsFromBagCount(uint32_t n) { return n == 0 ? 20 : n == 10 ? 30 : n == 20 ? 40 : 20; }
 
-static uint8_t*       rec(uint8_t* pockets, int slot)       { return pockets + (slot - 1) * REC_SIZE; }
-static const uint8_t* rec(const uint8_t* pockets, int slot) { return pockets + (slot - 1) * REC_SIZE; }
+static const uint8_t EMPTY_REC[REC_SIZE] = { 0xFE, 0xFF, 0, 0, 0, 0, 0, 0 };
 
-SlotRec readSlot(const uint8_t* pockets, int slot) {
+SlotRec readSlot(const Pockets& pk, int slot) {
     SlotRec r = { ID_EMPTY, 0 };
-    if (!pockets || !validSlot(slot)) return r;
-    const uint8_t* p = rec(pockets, slot);
+    if (!pk.valid(slot)) return r;
+    const uint8_t* p = pk.rec(slot);
     r.id = rd16(p); r.raw = rd16(p + 4);
     return r;
 }
-bool slotEmpty(const uint8_t* pockets, int slot) { return readSlot(pockets, slot).id == ID_EMPTY; }
+bool slotEmpty(const Pockets& pk, int slot) { return readSlot(pk, slot).id == ID_EMPTY; }
 
-int countEmpty(const uint8_t* pockets) {
+int countEmpty(const Pockets& pk) {
     int n = 0;
-    for (int s = 1; s <= SLOT_COUNT; s++) if (slotEmpty(pockets, s)) n++;
+    for (int s = 1; s <= pk.count; s++) if (pk.valid(s) && slotEmpty(pk, s)) n++;
     return n;
 }
-int countItems(const uint8_t* pockets) { return SLOT_COUNT - countEmpty(pockets); }
+int countItems(const Pockets& pk) { return pk.main ? pk.count - countEmpty(pk) : 0; }
 
-int nextEmptySlot(const uint8_t* pockets, int from) {
-    if (!pockets) return -1;
-    if (!validSlot(from)) from = 1;
-    for (int i = 0; i < SLOT_COUNT; i++) {
-        int s = ((from - 1 + i) % SLOT_COUNT) + 1;
-        if (slotEmpty(pockets, s)) return s;
+int nextEmptySlot(const Pockets& pk, int from) {
+    if (!pk.main) return -1;
+    if (!pk.valid(from)) from = 1;
+    for (int i = 0; i < pk.count; i++) {
+        int s = ((from - 1 + i) % pk.count) + 1;
+        if (slotEmpty(pk, s)) return s;
     }
     return -1;
 }
 
-bool placeInEmpty(uint8_t* pockets, int slot, uint16_t id, uint16_t raw) {
+bool placeInEmpty(const Pockets& pk, int slot, uint16_t id, uint16_t raw) {
     // Safety: never overwrite an occupied slot (no inherited wrapping / wear bytes).
-    if (!pockets || !validSlot(slot) || !validPlaceId(id) || !slotEmpty(pockets, slot)) return false;
-    uint8_t* p = rec(pockets, slot);
+    if (!pk.valid(slot) || !validPlaceId(id) || !slotEmpty(pk, slot)) return false;
+    uint8_t* p = pk.rec(slot);
     wr16(p, id); p[2] = 0; p[3] = 0; wr16(p + 4, raw); wr16(p + 6, 0);
     return true;
 }
 
-bool clearSlot(uint8_t* pockets, int slot) {
-    if (!pockets || !validSlot(slot)) return false;
-    uint8_t* p = rec(pockets, slot);
-    static const uint8_t EMPTY_REC[REC_SIZE] = { 0xFE, 0xFF, 0, 0, 0, 0, 0, 0 };
+bool clearSlot(const Pockets& pk, int slot) {
+    if (!pk.valid(slot)) return false;
+    uint8_t* p = pk.rec(slot);
     if (memcmp(p, EMPTY_REC, REC_SIZE) == 0) return false;
     memcpy(p, EMPTY_REC, REC_SIZE);
     return true;
 }
 
-bool setSlotRaw(uint8_t* pockets, int slot, uint16_t raw) {
-    if (!pockets || !validSlot(slot) || slotEmpty(pockets, slot)) return false;
-    wr16(rec(pockets, slot) + 4, raw);
+bool setSlotRaw(const Pockets& pk, int slot, uint16_t raw) {
+    if (!pk.valid(slot) || slotEmpty(pk, slot)) return false;
+    wr16(pk.rec(slot) + 4, raw);
     return true;
 }
 
+void toImage(const Pockets& pk, uint8_t img[ALL_SLOTS_BYTES]) {
+    for (int s = 1; s <= SLOT_MAX; s++)
+        memcpy(img + (s - 1) * REC_SIZE, pk.valid(s) ? pk.rec(s) : EMPTY_REC, REC_SIZE);
+}
+
 // ------------------------------ base / pending -----------------------------
-void snapshotBase(Base& b, const uint8_t* pockets, const uint32_t* vals) {
-    memcpy(b.pockets, pockets, POCKETS_BYTES);
+void snapshotBase(Base& b, const Pockets& pk, const uint32_t* vals) {
+    toImage(pk, b.pockets);
+    b.count = pk.count;
     for (int i = 0; i < 4; i++) b.vals[i] = vals[i];
     b.valid = true;
 }
-bool slotModified(const Base& b, const uint8_t* pockets, int slot) {
-    if (!b.valid || !validSlot(slot)) return false;
-    return memcmp(rec(b.pockets, slot), rec(pockets, slot), REC_SIZE) != 0;
+SlotRec baseSlot(const Base& b, int slot) {
+    SlotRec r = { ID_EMPTY, 0 };
+    if (!b.valid || slot < 1 || slot > b.count) return r;
+    const uint8_t* p = b.pockets + (slot - 1) * REC_SIZE;
+    r.id = rd16(p); r.raw = rd16(p + 4);
+    return r;
+}
+bool slotModified(const Base& b, const Pockets& pk, int slot) {
+    if (!b.valid || !pk.valid(slot) || slot > b.count) return false;
+    return memcmp(b.pockets + (slot - 1) * REC_SIZE, pk.rec(slot), REC_SIZE) != 0;
 }
 bool valModified(const Base& b, const uint32_t* vals, int idx) {
     return b.valid && idx >= 0 && idx < 4 && b.vals[idx] != vals[idx];
 }
-int pendingPockets(const Base& b, const uint8_t* pockets) {
+int pendingPockets(const Base& b, const Pockets& pk) {
     int n = 0;
-    for (int s = 1; s <= SLOT_COUNT; s++) if (slotModified(b, pockets, s)) n++;
+    for (int s = 1; s <= pk.count; s++) if (slotModified(b, pk, s)) n++;
     return n;
 }
 int pendingVals(const Base& b, const uint32_t* vals) {
@@ -106,27 +118,28 @@ int pendingVals(const Base& b, const uint32_t* vals) {
     for (int i = 0; i < 4; i++) if (valModified(b, vals, i)) n++;
     return n;
 }
-int pendingCount(const Base& b, const uint8_t* pockets, const uint32_t* vals) {
-    return pendingPockets(b, pockets) + pendingVals(b, vals);
+int pendingCount(const Base& b, const Pockets& pk, const uint32_t* vals) {
+    return pendingPockets(b, pk) + pendingVals(b, vals);
 }
-void revertSlot(const Base& b, uint8_t* pockets, int slot) {
-    if (!b.valid || !validSlot(slot)) return;
-    memcpy(rec(pockets, slot), rec(b.pockets, slot), REC_SIZE);
+void revertSlot(const Base& b, const Pockets& pk, int slot) {
+    if (!b.valid || !pk.valid(slot) || slot > b.count) return;
+    memcpy(pk.rec(slot), b.pockets + (slot - 1) * REC_SIZE, REC_SIZE);
 }
 void revertVal(const Base& b, uint32_t* vals, int idx) {
     if (b.valid && idx >= 0 && idx < 4) vals[idx] = b.vals[idx];
 }
-void discardAll(const Base& b, uint8_t* pockets, uint32_t* vals) {
+void discardAll(const Base& b, const Pockets& pk, uint32_t* vals) {
     if (!b.valid) return;
-    memcpy(pockets, b.pockets, POCKETS_BYTES);
+    for (int s = 1; s <= pk.count; s++) revertSlot(b, pk, s);
     for (int i = 0; i < 4; i++) vals[i] = b.vals[i];
 }
 
+// g_slot only ever addresses slots 1..20 (doSave writes at POCKETS_BASE + (g_slot - 1) * 8).
 void syncSaveSlotVars(const uint8_t* pockets, int& gSlot, int32_t& gNewId, int32_t& gNewCount) {
     if (!validSlot(gSlot)) gSlot = 1;
-    SlotRec r = readSlot(pockets, gSlot);
-    gNewId = r.id;
-    gNewCount = r.raw;
+    const uint8_t* p = pockets + (gSlot - 1) * REC_SIZE;
+    gNewId = rd16(p);
+    gNewCount = rd16(p + 4);
 }
 
 // --------------------------------- values ----------------------------------
@@ -750,32 +763,44 @@ bool Favorites::resetToDefaults() {
 }
 
 // --------------------------------- loadouts --------------------------------
-bool pocketsPlausible(const uint8_t* pockets) {
-    if (!pockets) return false;
-    for (int s = 1; s <= SLOT_COUNT; s++) {
-        uint16_t id = readSlot(pockets, s).id;
+bool pocketsPlausible(const uint8_t* img, int slots) {
+    if (!img || slots < 1 || slots > SLOT_MAX) return false;
+    for (int s = 1; s <= slots; s++) {
+        uint16_t id = rd16(img + (s - 1) * REC_SIZE);
         if (id != ID_EMPTY && !validPlaceId(id)) return false;
     }
     return true;
 }
 
-bool loadoutRead(const char* path, uint8_t out[POCKETS_BYTES]) {
+bool loadoutRead(const char* path, uint8_t out[ALL_SLOTS_BYTES], int& slots) {
     FILE* f = fopen(path, "rb");
     if (!f) return false;
-    uint8_t tmp[POCKETS_BYTES];
-    size_t rd = fread(tmp, 1, POCKETS_BYTES, f);
+    uint8_t tmp[ALL_SLOTS_BYTES + 1];
+    size_t rd = fread(tmp, 1, sizeof tmp, f);                // one byte more: catches a longer file
     fclose(f);
-    if (rd != (size_t)POCKETS_BYTES || !pocketsPlausible(tmp)) return false;
-    memcpy(out, tmp, POCKETS_BYTES);
+    int n = rd == (size_t)POCKETS_BYTES ? SLOT_COUNT : rd == (size_t)ALL_SLOTS_BYTES ? SLOT_MAX : 0;
+    if (!n || !pocketsPlausible(tmp, n)) return false;
+    for (int s = n + 1; s <= SLOT_MAX; s++) memcpy(tmp + (s - 1) * REC_SIZE, EMPTY_REC, REC_SIZE);
+    memcpy(out, tmp, ALL_SLOTS_BYTES);
+    slots = n;
     return true;
 }
 
-bool loadoutWrite(const char* path, const uint8_t* pockets) {
+int lastUsedSlot(const uint8_t img[ALL_SLOTS_BYTES]) {
+    for (int s = SLOT_MAX; s >= 1; s--) if (rd16(img + (s - 1) * REC_SIZE) != ID_EMPTY) return s;
+    return 0;
+}
+
+bool loadoutWrite(const char* path, const Pockets& pk) {
+    if (!pk.main) return false;
+    uint8_t img[ALL_SLOTS_BYTES];
+    toImage(pk, img);
+    const size_t n = pk.count == SLOT_COUNT ? (size_t)POCKETS_BYTES : (size_t)ALL_SLOTS_BYTES;
     FILE* f = fopen(path, "wb");
     if (!f) return false;
-    size_t wr = fwrite(pockets, 1, POCKETS_BYTES, f);
+    size_t wr = fwrite(img, 1, n, f);
     int rc = fclose(f);
-    return wr == (size_t)POCKETS_BYTES && rc == 0;
+    return wr == n && rc == 0;
 }
 
 // ------------------------------- SD file utils -----------------------------
@@ -963,11 +988,11 @@ WeekStatus turnipWeekStatus(const GameDate& saved, const GameDate& now) {
     return a == b ? WEEK_CURRENT : (a < b ? WEEK_PAST : WEEK_FUTURE);
 }
 
-TurnipHold turnipsInPockets(const uint8_t* pockets) {
+TurnipHold turnipsInPockets(const Pockets& pk) {
     TurnipHold h;
-    if (!pockets) return h;
-    for (int s = 1; s <= SLOT_COUNT; s++) {
-        SlotRec r = readSlot(pockets, s);
+    if (!pk.main) return h;
+    for (int s = 1; s <= pk.count; s++) {
+        SlotRec r = readSlot(pk, s);
         if (r.id >= ID_TURNIPS_10 && r.id <= ID_TURNIPS_100) {
             h.turnips += (long)(r.id - ID_TURNIPS_10 + 1) * 10 * rawToQty(r.raw);
             h.slots++;

@@ -305,6 +305,7 @@ Un item vide pour NHSE vaut `Delete() => RawValue = NONE`, soit **`FE FF 00 00 0
 ### 4.1 Invariants que la nouvelle UI DOIT respecter
 
 1. **I1 — Zone d'écriture.** L'UI n'écrit que dans `personal[0x37CA8 .. 0x37D48)` (20 × 8 octets) et dans `g_vals[0..3]`. Jamais dans `mainData`, `origP`, `origM`, `pHdr`, `mHdr`, ni ailleurs dans `personal`.
+   > **Étendu en v1.2.0 (validé par l'utilisateur le 13/11/2026)** : aussi `personal[0x37BF0 .. 0x37BF0 + 8 × n)`, les emplacements 21 à 20 + n du sac, où n = 10 ou 20 est lu dans le compteur u32 à `0x37C90` (0, 10 ou 20 d'après NHSE ; toute autre valeur = pas de sac). Le compteur n'est jamais écrit. La validation des sauvegardes (`diffOutside`) autorise les 160 octets du sac.
 2. **I2 — Synchronisation avant `doSave`.** Immédiatement avant chaque `doSave()` : `g_slot` ∈ 1..20, et `g_newId`/`g_newCount` égaux au contenu du slot `g_slot` dans `personal` (point c).
 3. **I3 — Un seul appelant.** `doSave()` n'est appelé que par `applyAll`. La restauration et le Doctor ne sont appelés que depuis le panneau Système, derrière le dialogue danger.
 4. **I4 — Base reprise uniquement après un succès** (`SAVED`, `RESTORED`, `REPAIRED`). En cas d'échec, la Base et les modifs en attente restent intactes.

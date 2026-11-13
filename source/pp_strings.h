@@ -41,6 +41,7 @@ static const char* const BADGE_SINGLE = "1/slot";
 static const char* const BADGE_FAV    = "FAV";
 static const char* const BADGE_WRITES = "WRITES NOW";
 static const char* const DOESNT_STACK = "doesn't stack";
+static const char* const BAG_SLOT     = "pocket upgrade slot";
 static const char* const STACKS_TO_FMT = "stacks to %d";
 static const char* const OVER_MAX_FMT  = "more than the game allows (%d)";
 static const char* const VARIANT_FMT   = "variant value %d";
@@ -128,7 +129,8 @@ static const char* const M_LOAD_LO     = "Load into pockets";
 static const char* const M_SAVE_LO     = "Save current pockets here";
 static const char* const M_DELETE_LO   = "Delete loadout";
 static const char* const LO_EMPTY      = "Empty";
-static const char* const LO_SAVED_FMT  = "Saved \xC2\xB7 %d/20 items";
+static const char* const LO_SAVED_FMT  = "Saved \xC2\xB7 %d items in %d slots";
+static const char* const LO_TOO_BIG_FMT = "Uses slot %d, but your pockets have %d slots: it can't be loaded.";
 static const char* const T_LO_LOADED_FMT = "Loadout \"%s\" loaded (pending). + to review.";
 static const char* const T_LO_SAVED_FMT  = "Loadout \"%s\" saved to the SD card";
 static const char* const T_LO_DELETED    = "Loadout deleted";
@@ -138,7 +140,7 @@ static const char* const T_LO_WRITE      = "Couldn't write the loadout to the SD
 static const char* const D_LO_REPLACE_FMT = "Replace \"%s\"?";
 static const char* const D_LO_REPLACE_BODY = "The pockets as shown, including changes not applied yet, will be saved.";
 static const char* const D_LO_LOAD_FMT  = "Load \"%s\"?";
-static const char* const D_LO_LOAD_BODY = "It replaces all 20 slots, including your pending pocket changes.";
+static const char* const D_LO_LOAD_BODY = "It replaces all your slots, including your pending pocket changes.";
 static const char* const D_LO_DEL_FMT   = "Delete \"%s\"?";
 
 // System
