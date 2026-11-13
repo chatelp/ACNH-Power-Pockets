@@ -43,7 +43,7 @@ Seven panels, switched with **L** and **R**. **A** opens a menu of actions for w
 
 Pick an item once, from your favorites, the catalog, or your own pockets. Each press of **Y** drops it in the next empty slot. Occupied slots are never overwritten: replacing an item takes an explicit *Clear slot* first.
 
-With the pocket upgrades from Nook's Cranny, the grid shows your 30 or 40 slots. The app reads how many you have from the save and never changes that number.
+With the pocket upgrades from Nook's Cranny, the grid shows your 30 or 40 slots. The app reads how many you have from the save and never changes that number. Checked in the game (ACNH 3.0.3): items placed in slots 21 to 40 land exactly where they should.
 
 ![The Pockets panel with 40 slots in 4 columns](docs/screenshots/pockets-40.png)
 
