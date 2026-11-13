@@ -22,6 +22,9 @@ static int g_fail = 0, g_pass = 0;
 static SDL_Surface* g_surf = nullptr;
 static std::string g_out;
 static int g_shot = 0;
+static GameDate gd(int y, int mo, int d, int h) { GameDate g; g.year = y; g.month = mo; g.day = d; g.hour = h; g.valid = true; return g; }
+static GameDate fakeNow = gd(2026, 11, 11, 14);          // Wednesday 11 Nov 2026, 2 PM
+static int fakeWday = 3;
 
 static void shot(const char* name) {
     char p[512];
@@ -116,7 +119,7 @@ int main(int argc, char** argv) {
     EngineHooks h;
     h.pockets = pockets; h.vals = vals; h.items = &items; h.favorites = &favs; h.stack = &stack; h.limits = &limits; h.glyphs = &glyphs;
     h.saveReady = true; h.editSupported = true; h.loadoutNames = LOADOUT_NAMES; h.loadoutCount = 5;
-    h.sdDir = sd; h.version = "1.0.1 (harness)";
+    h.sdDir = sd; h.version = "1.1.0 (harness)";
     h.apply = [&]() {
         applyCalls++;
         syncSaveSlotVars(pockets, gSlot, gNewId, gNewCount);
@@ -127,6 +130,11 @@ int main(int argc, char** argv) {
         return ER_OK;
     };
     h.restore = [&]() { restoreCalls++; return ER_OK; };
+    // Stalk Market as main.cpp would read it, and a fake console clock.
+    TurnipWeek week; week.present = true; week.buy = 98; week.pattern = 1; week.saved = gd(2026, 11, 11, 9);
+    { const uint32_t pr[14] = { 0, 0, 85, 80, 76, 72, 110, 160, 532, 201, 140, 90, 60, 50 }; memcpy(week.price, pr, sizeof pr); }
+    h.turnips = [&](TurnipWeek& w) { w = week; return true; };
+    h.clock = [&](GameDate& g, int& wd) { g = fakeNow; wd = fakeWday; return true; };
     h.doctor = [&]() { doctorCalls++; return ER_OK; };
     h.checkBackup = [&](bool) { return BC_OK; };
     h.writeSessionBackup = [&]() { sessionCalls++; return true; };
@@ -225,6 +233,25 @@ int main(int argc, char** argv) {
     vals[0] = 150000; press(ui, DOWN); press(ui, UP); idle(ui);   // above the game's wallet max
     shot("money-wallet-warning");
 
+    // Turnips: read-only Stalk Market, clock on Wednesday PM of the save's week.
+    press(ui, R); idle(ui);
+    shot("turnips-empty-pockets");
+    {
+        uint8_t keep20[8]; memcpy(keep20, pockets + 19 * 8, 8);
+        put(pockets, 20, ID_TURNIPS_100, qtyToRaw(4));        // 400 turnips
+        press(ui, L); press(ui, R); idle(ui);
+        shot("turnips");
+        uint8_t snap[POCKETS_BYTES]; memcpy(snap, pockets, sizeof snap);
+        press(ui, A); press(ui, Y); press(ui, B); idle(ui);    // no action on this panel
+        CHECK(memcmp(snap, pockets, sizeof snap) == 0 && applyCalls == 0);
+        fakeNow = gd(2026, 11, 16, 10); fakeWday = 1;          // next Monday: the stored week is over
+        press(ui, L); press(ui, R); idle(ui);
+        shot("turnips-past-week");
+        fakeNow = gd(2026, 11, 11, 14); fakeWday = 3;
+        memcpy(pockets + 19 * 8, keep20, 8);
+        press(ui, L); press(ui, R); idle(ui);
+    }
+
     // Loadouts
     press(ui, R); idle(ui);
     shot("loadouts");
@@ -263,7 +290,7 @@ int main(int argc, char** argv) {
     shot("restored");
 
     // Discard: change, then minus.
-    press(ui, L, 5); idle(ui);
+    press(ui, L, 6); idle(ui);
     press(ui, DOWN, 2); press(ui, A); idle(ui);
     int clearIdx = 7;                                        // "Clear slot" is the last entry (9 entries)
     press(ui, DOWN, clearIdx + 1); press(ui, A); idle(ui);
@@ -353,10 +380,10 @@ int main(int argc, char** argv) {
         CHECK(slotEmpty(pk, 1));
         press(u, MINUS); press(u, RIGHT); press(u, A); idle(u);
         CHECK(!slotEmpty(pk, 1));                               // discard goes back to the real console state
-        press(u, R, 5); press(u, A); idle(u);
+        press(u, R, 6); press(u, A); idle(u);
         shot("fault-restore-blocked-untrusted");
         CHECK(restoreN == 0 && checkN == 0);
-        press(u, A); press(u, L, 5); idle(u);
+        press(u, A); press(u, L, 6); idle(u);
 
         // NAND write failed: pending kept, nothing re-based. Then a good Apply re-bases.
         sessionOk = true; applyRes = ER_NAND_FAILED;
@@ -372,7 +399,7 @@ int main(int argc, char** argv) {
 
         // Backup check fails: the restore block is never reached (I8).
         checkRes = BC_CORRUPT;
-        press(u, R, 5); press(u, A); idle(u);
+        press(u, R, 6); press(u, A); idle(u);
         CHECK(checkN == 1 && restoreN == 0);
         press(u, A); idle(u);
         // Pre-edit restore: the copy over backup_*.dat fails => nothing restored, regular restore blocked.
@@ -403,7 +430,7 @@ int main(int argc, char** argv) {
         press(u, A); idle(u); press(u, A); idle(u);              // Doctor again: blocked dialog, closed
         press(u, UP, 2); press(u, A); idle(u); press(u, A); idle(u);   // restore: blocked
         CHECK(doctorN == 1 && restoreN == 2);
-        press(u, L, 5); press(u, DOWN); idle(u);
+        press(u, L, 6); press(u, DOWN); idle(u);
         uint8_t keep[POCKETS_BYTES]; memcpy(keep, pk, sizeof keep);
         press(u, A); press(u, UP); press(u, A); idle(u);         // Clear slot 2: refused
         press(u, A); idle(u);
@@ -431,10 +458,10 @@ int main(int argc, char** argv) {
         press(u, A); press(u, UP); press(u, A); idle(u); press(u, A);                    // Clear slot
         press(u, A); press(u, DOWN, 2); press(u, A); idle(u); press(u, A);               // Quantity
         press(u, R); press(u, Y); press(u, Y); idle(u); press(u, A);                     // take a favorite, place it
-        press(u, R, 3); press(u, Y); idle(u); press(u, A);                               // load a loadout
-        press(u, L); press(u, Y); idle(u); press(u, A);                                  // money stepper
+        press(u, R, 4); press(u, Y); idle(u); press(u, A);                               // load a loadout
+        press(u, L, 2); press(u, Y); idle(u); press(u, A);                               // money stepper
         press(u, A); press(u, DOWN, 2); press(u, A); idle(u); press(u, A);               // Set to max
-        press(u, R, 2);
+        press(u, R, 3);
         for (int row = 0; row < 3; row++) { press(u, A); idle(u); press(u, A); press(u, DOWN); }   // restore, pre-edit, Doctor
         press(u, PLUS); idle(u);
         CHECK(memcmp(keep, pk, sizeof pk) == 0 && vv[0] == 100 && vv[1] == 200 && vv[2] == 300 && vv[3] == 400);

@@ -781,6 +781,21 @@ int main(int argc, char** argv) {
                pp::copyFile(sessM.c_str(), (sdDir + "backup_main.dat").c_str());
     };
 
+    // Read-only: the Stalk Market as the game stored it in main.dat (never written).
+    hooks.turnips = [&](pp::TurnipWeek& w) -> bool {
+        return saveReady && editSupported && mainData && pp::readTurnipWeek(mainData, mSz, w);
+    };
+    // Console clock (the one the game uses), weekday 0 = Sunday.
+    hooks.clock = [](pp::GameDate& g, int& weekday) -> bool {
+        u64 ts = 0;
+        TimeCalendarTime ct; TimeCalendarAdditionalInfo ci;
+        if (R_FAILED(timeGetCurrentTime(TimeType_UserSystemClock, &ts))) return false;
+        if (R_FAILED(timeToCalendarTimeWithMyRule(ts, &ct, &ci))) return false;
+        g.year = ct.year; g.month = ct.month; g.day = ct.day; g.hour = ct.hour; g.minute = ct.minute;
+        g.valid = true; weekday = (int)ci.wday;
+        return true;
+    };
+
     // Read-only diagnostics for System > Info.
     hooks.info = [&](pp::InfoData& d) {
         d.saveSizeOk = editSupported;

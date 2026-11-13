@@ -214,6 +214,14 @@ void padUpdate(PadState* pad) {
 u64 padGetButtonsDown(const PadState* pad) { return pad->buttons_cur & ~pad->buttons_old; }
 u64 padGetButtons(const PadState* pad) { return pad->buttons_cur; }
 
+// Console clock: Wednesday 2026-11-11 14:30 (the synthetic save is dated that week).
+Result timeGetCurrentTime(TimeType, u64* ts) { if (ts) *ts = 1794407400ull; return 0; }
+Result timeToCalendarTimeWithMyRule(u64, TimeCalendarTime* c, TimeCalendarAdditionalInfo* i) {
+    if (c) { *c = TimeCalendarTime(); c->year = 2026; c->month = 11; c->day = 11; c->hour = 14; c->minute = 30; }
+    if (i) { *i = TimeCalendarAdditionalInfo(); i->wday = 3; }
+    return 0;
+}
+
 AppletType appletGetAppletType(void) { return faults.appletMode ? AppletType_LibraryApplet : AppletType_Application; }
 bool appletMainLoop(void) { return !script.empty(); }
 void svcSleepThread(s64) {}

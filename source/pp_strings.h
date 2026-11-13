@@ -9,7 +9,7 @@ namespace S {
 static const char* const APP_TITLE        = "ACNH Power Pockets";
 
 // Panels (tabs)
-static const char* const TAB[6] = { "Pockets", "Favorites", "Catalog", "Bells & Miles", "Loadouts", "System" };
+static const char* const TAB[7] = { "Pockets", "Favorites", "Catalog", "Bells & Miles", "Turnips", "Loadouts", "System" };
 
 // Header
 static const char* const HOLDING_NONE     = "Holding: \xE2\x80\x94";           // "Holding: —"
@@ -248,6 +248,38 @@ static const char* const FATAL_HINT1   = "Fully close Animal Crossing (HOME > X 
 static const char* const FATAL_HINT2   = "through the game: hold R while starting Animal Crossing.";
 static const char* const NO_ITEMS_BANNER = "items.txt is missing: no item names (IDs shown) and no 1/slot protection.";
 static const char* const RO_BANNER     = "Unsupported save version: read-only.";
+
+// Turnips (Stalk Market, read-only)
+static const char* const TN_BANNER       = "Stalk Market \xC2\xB7 read from your save, nothing is written";
+static const char* const TN_WEEK_FMT     = "Week of %s";
+static const char* const TN_PAST_FMT     = "These prices are from the week of %s. Play once this week to get this week's.";
+static const char* const TN_FUTURE       = "The save is dated after the console clock: these may not be this week's prices.";
+static const char* const TN_NO_CLOCK     = "Console clock unavailable";
+static const char* const TN_UNSUPPORTED  = "Turnip prices can only be read from a 3.0.x save.";
+static const char* const TN_DAISY        = "Daisy Mae (Sunday)";
+static const char* const TN_PATTERN      = "Pattern";
+static const char* const TN_BEST         = "Best price";
+static const char* const TN_UNKNOWN_PAT  = "Unknown (%u)";
+static const char* const TN_UNUSUAL      = "Unusual values in the save, shown as they are";
+static const char* const TN_AM           = "AM";
+static const char* const TN_PM           = "PM";
+static const char* const TN_DAYS[7]      = { "Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday" };
+static const char* const TN_DAYS3[7]     = { "Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat" };
+static const char* const TN_STATS_FMT    = "Min %u \xC2\xB7 Max %u \xC2\xB7 Avg %.1f \xC2\xB7 dashed line: Daisy Mae's price";
+static const char* const TN_BUY_FMT      = "Buy %u";
+static const char* const TN_HOLD_FMT     = "%s turnips in your pockets";
+static const char* const TN_SPOILED_FMT  = " \xC2\xB7 %d slot%s spoiled";
+static const char* const TN_NONE         = "No turnips in your pockets";
+static const char* const TN_NONE_HINT    = "Daisy Mae sells them on Sunday mornings.";
+static const char* const TN_NOW_FMT      = "Now (%s, %u): %s Bells";
+static const char* const TN_SUNDAY       = "Sunday: Nook's Cranny doesn't buy turnips today.";
+static const char* const TN_BEST_FMT     = "Best still to come (%s, %u): %s Bells";
+static const char* const TN_BEST_WEEK_FMT = "Best this week (%s, %u): %s Bells";
+static const char* const TN_NO_BEST      = "No better price left this week.";
+static const char* const TN_STALE_VALUE  = "Their value needs this week's prices.";
+static const char* const TN_DETAIL_FMT   = "Turnips \xC2\xB7 read-only \xC2\xB7 Daisy Mae %u \xC2\xB7 %s";
+static const char* const TN_DETAIL_NOW_FMT = " \xC2\xB7 now %s: %u";
+static const char* const MONTHS3[12]     = { "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec" };
 static const char* const STALE_BANNER  = "Stale integrity hash: the game would refuse this save. Fix it with System > Save Doctor.";
 
 static const char* const SPLASH_TITLE  = "Reading the save\xE2\x80\xA6";

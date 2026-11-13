@@ -52,6 +52,12 @@ void padUpdate(PadState* pad);
 u64  padGetButtonsDown(const PadState* pad);
 u64  padGetButtons(const PadState* pad);
 
+typedef enum { TimeType_UserSystemClock = 0, TimeType_NetworkSystemClock = 1, TimeType_LocalSystemClock = 2, TimeType_Default = TimeType_UserSystemClock } TimeType;
+typedef struct { u16 year; u8 month; u8 day; u8 hour; u8 minute; u8 second; u8 pad; } TimeCalendarTime;
+typedef struct { u32 wday; u32 yday; char timezoneName[8]; u32 DST; s32 offset; } TimeCalendarAdditionalInfo;
+Result timeGetCurrentTime(TimeType type, u64* timestamp);
+Result timeToCalendarTimeWithMyRule(u64 timestamp, TimeCalendarTime* caltime, TimeCalendarAdditionalInfo* info);
+
 typedef enum { AppletType_Application = 0, AppletType_LibraryApplet = 2 } AppletType;
 AppletType appletGetAppletType(void);
 bool appletMainLoop(void);

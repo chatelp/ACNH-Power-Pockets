@@ -14,7 +14,7 @@
 
 **Fill your pockets fast, and see every change before a single byte is written.**
 
-ACNH Power Pockets is a homebrew app for the Nintendo Switch (Atmosphère). It edits the 20 pocket slots, Bells, Nook Miles and the house loan of the primary resident, directly on the console.
+ACNH Power Pockets is a homebrew app for the Nintendo Switch (Atmosphère). It edits the 20 pocket slots, Bells, Nook Miles and the house loan of the primary resident, directly on the console. It also shows this week's turnip prices, read from the save without changing it.
 
 It is a fork of [ACNH-Save-Editor](https://github.com/cbreezy210/ACNH-Save-Editor) by cbreezy210. The save engine is the upstream one: the only thing changed in it is the name of the SD folder where it keeps its backups. The interface is new, built around inventory work. See [Where it comes from](#where-it-comes-from).
 
@@ -37,7 +37,7 @@ It is a fork of [ACNH-Save-Editor](https://github.com/cbreezy210/ACNH-Save-Edito
 
 ## A quick tour
 
-Six panels, switched with **L** and **R**. **A** opens a menu of actions for whatever is selected. **Y** does the most common one directly.
+Seven panels, switched with **L** and **R**. **A** opens a menu of actions for whatever is selected. **Y** does the most common one directly.
 
 ### Ten slots in ten presses
 
@@ -65,6 +65,14 @@ Every edit stays in memory and is marked in amber. **+** opens the Review: each 
 |---|---|
 | ![Bells and Miles panel with the number editor open](docs/screenshots/bells-miles.png) | ![Review screen listing pocket and money changes](docs/screenshots/review.png) |
 | **Bells & Miles.** Wallet, Bank, Nook Miles and House loan, by steps or typed in. | **Review.** The only way to the save goes through this screen. |
+
+### This week's turnip prices
+
+The game works out the whole week of Stalk Market prices when the week starts and keeps them in the save. The **Turnips** panel reads them: Daisy Mae's price, the twelve Nook's Cranny prices from Monday to Saturday, the week's pattern, a graph, and what the turnips in your pockets are worth now and at the best price still to come. The current half-day is highlighted from the console clock, past ones are grayed out.
+
+This panel only reads. It has no action and never writes to the save. If the save is from a past week (you haven't played since Sunday), a banner says so, because the prices shown are last week's.
+
+![Turnips panel: a large-spike week, Wednesday afternoon highlighted, and 400 turnips in the pockets](docs/screenshots/turnips.png)
 
 ### Dangerous actions are hard to trigger
 
@@ -137,6 +145,7 @@ Power Pockets has its own file name and its own folder (`switch/acnh_power_pocke
 | **Favorites** | Two groups, each A to Z: **YOURS**, then **BUILT-IN**. **Y** takes one and jumps back to Pockets. A built-in favorite can be hidden, and comes back with *Restore default favorites*. |
 | **Catalog** | Search by name or 4-digit hex ID. ★ marks your favorites. |
 | **Bells & Miles** | Wallet, Bank, Nook Miles, House loan. Step with the D-pad (±1,000 / ±100,000, ×10 after holding 2 s) or type a value. A warning shows above the game's wallet limit (99,999). |
+| **Turnips** | Read-only: Daisy Mae's price, the week's prices and pattern, a graph, and the value of the turnips you carry. A banner warns when the prices are from a past week. |
 | **Loadouts** | Five saved pocket setups. Loading one is a pending change like any other. |
 | **System** | Restore backups, Save Doctor, reload your lists, diagnostics, quit. |
 
@@ -168,6 +177,7 @@ Power Pockets has its own file name and its own folder (`switch/acnh_power_pocke
 - **Slow start on a save with a stale hash.** If a save was written without its hashes (by an earlier build of this app, for instance), the inherited engine rescans the files at launch. The "Reading the save…" screen can then stay up for tens of seconds, or minutes (estimates, not measured on a console). It is not frozen: wait, then run the Save Doctor.
 - **Only the primary resident** (`Villager0`) and **only the 20 pocket slots** (not the bag expansion).
 - **Save versions 3.0.x only**; anything else is read-only.
+- **Turnips panel: not yet checked against the game.** The prices and the pattern are read where NHSE documents them for 3.0.x. The date of the last save, used to tell this week from a past one, is read where the Turnips homebrew reads it. Compare with Daisy Mae and Nook's Cranny the first time.
 - Item names are English, from `items.txt`. About 6 % of the named items have no picture rule yet and show a "?".
 
 ## Files on the SD card
@@ -244,7 +254,7 @@ The two `ui_*` scripts need SDL2 and SDL2_ttf (`brew install sdl2 sdl2_ttf`) and
 | Path | Contents |
 |---|---|
 | `source/main.cpp` | Upstream save engine and the wiring to the UI |
-| `source/pp_model.*` | Testable logic: slots, pending changes, favorites, `1/slot` and picture rules, backup checks |
+| `source/pp_model.*` | Testable logic: slots, pending changes, favorites, `1/slot` and picture rules, backup checks, turnip prices |
 | `source/pp_ui.*`, `source/pp_strings.h` | Panels, dialogs, every on-screen string |
 | `tools/` | Engine check, the scripts that draw the logo, icons and item pictures, and the one that builds `item_stacks.txt` from NHSE |
 | `docs/design/` | Visual design system, item pictures, HTML mockups |
@@ -291,5 +301,6 @@ Three shipped data files keep their own license (details in [THIRD_PARTY_NOTICES
 
 - **cbreezy210** — [ACNH-Save-Editor](https://github.com/cbreezy210/ACNH-Save-Editor), the save engine this project runs on.
 - **kwsch and [NHSE](https://github.com/kwsch/NHSE)** — the ACNH save-format research everything here relies on, the item names table (`items.txt`) and the item kinds and stack limits behind `item_stacks.txt` (GPL-3.0).
+- **averne and [Turnips](https://github.com/averne/Turnips)** — the turnip prices previewer that inspired the Turnips panel, and the location of the save date. No code was taken from it.
 - **[devkitPro](https://devkitpro.org) / libnx**, **SDL2**, **SDL_ttf**, **stb_image**.
 - **Varela Round** font by The Varela Round Project Authors (SIL Open Font License 1.1).

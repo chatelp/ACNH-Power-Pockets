@@ -203,6 +203,69 @@ static void testStackRules() {
     CHECK(!sr.overMax(5, 7));                                // 1/slot: never "over max" (the field is a variant)
 }
 
+static void wr32le(uint8_t* p, uint32_t v) { p[0] = v; p[1] = v >> 8; p[2] = v >> 16; p[3] = v >> 24; }
+static GameDate gd(int y, int mo, int d, int h) { GameDate g; g.year = y; g.month = mo; g.day = d; g.hour = h; g.minute = 0; g.valid = true; return g; }
+
+static void testTurnips() {
+    printf("turnip market (read-only)\n");
+    std::vector<uint8_t> m(MAIN_SIZE_30, 0xAB);
+    uint8_t* t = &m[TURNIP_OFF_30];
+    const uint32_t prices[14] = { 0, 0, 85, 80, 76, 72, 110, 160, 532, 201, 140, 90, 60, 50 };
+    wr32le(t, 98);
+    for (int i = 0; i < 14; i++) wr32le(t + 4 + i * 4, prices[i]);
+    wr32le(t + 0x3C, 1);
+    uint8_t* d = &m[SAVE_DATE_OFF_30];
+    d[0] = 2026 & 0xFF; d[1] = 2026 >> 8; d[2] = 11; d[3] = 11; d[4] = 9; d[5] = 41; d[6] = 3;
+    TurnipWeek w;
+    CHECK(!readTurnipWeek(m.data(), m.size() - 1, w) && !w.present);       // other save version: nothing read
+    CHECK(!readTurnipWeek(nullptr, MAIN_SIZE_30, w));
+    CHECK(readTurnipWeek(m.data(), m.size(), w) && w.present && !w.unusual);
+    CHECK(w.buy == 98 && w.price[8] == 532 && w.price[13] == 50 && w.pattern == 1);
+    CHECK(w.saved.valid && w.saved.year == 2026 && w.saved.month == 11 && w.saved.day == 11 && w.saved.hour == 9);
+    CHECK(std::string(turnipPatternName(1)) == "Large spike" && turnipPatternName(4) == nullptr);
+    TurnipStats st = turnipStats(w);
+    CHECK(st.max == 532 && st.maxSlot == 8 && st.min == 50 && st.minSlot == 13);   // Sunday slots ignored
+    CHECK(st.avg > 137.99 && st.avg < 138.01);                                       // 1656 / 12
+    CHECK(std::string(turnipSlotName(8)) == "Thu AM" && std::string(turnipSlotName(13)) == "Sat PM");
+    // Unusual values are flagged, never "fixed".
+    wr32le(t, 30); CHECK(readTurnipWeek(m.data(), m.size(), w) && w.unusual && w.buy == 30); wr32le(t, 98);
+    wr32le(t + 4 + 5 * 4, 0); CHECK(readTurnipWeek(m.data(), m.size(), w) && w.unusual); wr32le(t + 4 + 5 * 4, 72);
+    wr32le(t + 0x3C, 7); CHECK(readTurnipWeek(m.data(), m.size(), w) && w.unusual && turnipPatternName(w.pattern) == nullptr); wr32le(t + 0x3C, 1);
+    d[2] = 13; CHECK(readTurnipWeek(m.data(), m.size(), w) && !w.saved.valid); d[2] = 11;
+
+    // Price slot at a given time: noon switches AM -> PM, the day changes at 5 AM.
+    CHECK(turnipSlotAt(1, 8) == 2 && turnipSlotAt(1, 11) == 2 && turnipSlotAt(1, 12) == 3 && turnipSlotAt(1, 23) == 3);
+    CHECK(turnipSlotAt(2, 4) == 3);                    // Tuesday 4 AM: still Monday PM
+    CHECK(turnipSlotAt(1, 3) == 0);                    // Monday 3 AM: still Sunday
+    CHECK(turnipSlotAt(0, 4) == 13 && turnipSlotAt(0, 5) == 0 && turnipSlotAt(6, 13) == 13);
+    CHECK(turnipSlotAt(7, 10) == -1 && turnipSlotAt(1, 24) == -1);
+
+    // Calendar helpers and week comparison (weeks run Sunday 5 AM to Sunday 5 AM).
+    CHECK(daysFromCivil(1970, 1, 1) == 0 && daysFromCivil(2000, 3, 1) == 11017);
+    int y, mo, da; civilFromDays(daysFromCivil(2026, 11, 8), y, mo, da); CHECK(y == 2026 && mo == 11 && da == 8);
+    CHECK(gameWeekStart(gd(2026, 11, 11, 9)) == daysFromCivil(2026, 11, 8));      // Wednesday -> Sunday 8 Nov
+    CHECK(gameWeekStart(gd(2026, 11, 8, 4)) == daysFromCivil(2026, 11, 1));       // Sunday 4 AM: previous week
+    CHECK(gameWeekStart(gd(2026, 11, 8, 5)) == daysFromCivil(2026, 11, 8));
+    CHECK(turnipWeekStatus(gd(2026, 11, 11, 9), gd(2026, 11, 14, 22)) == WEEK_CURRENT);
+    CHECK(turnipWeekStatus(gd(2026, 11, 11, 9), gd(2026, 11, 15, 4)) == WEEK_CURRENT);   // Saturday night, past midnight
+    CHECK(turnipWeekStatus(gd(2026, 11, 11, 9), gd(2026, 11, 15, 5)) == WEEK_PAST);
+    CHECK(turnipWeekStatus(gd(2026, 11, 11, 9), gd(2026, 11, 7, 12)) == WEEK_FUTURE);
+    CHECK(turnipWeekStatus(gd(2026, 12, 30, 12), gd(2027, 1, 2, 12)) == WEEK_CURRENT);   // across New Year (Sun 27 Dec)
+    CHECK(turnipWeekStatus(gd(2026, 12, 30, 12), gd(2027, 1, 3, 12)) == WEEK_PAST);
+    GameDate bad; CHECK(turnipWeekStatus(bad, gd(2026, 11, 11, 9)) == WEEK_UNKNOWN);
+
+    // Turnips in the pockets: bundles of 10..100, up to 10 bundles a slot.
+    uint8_t p[POCKETS_BYTES]; emptyPockets(p);
+    CHECK(turnipsInPockets(p).turnips == 0 && turnipsInPockets(nullptr).slots == 0);
+    putRaw(p, 1, ID_TURNIPS_100, qtyToRaw(10), 0, 0);      // 1,000
+    putRaw(p, 2, ID_TURNIPS_10, qtyToRaw(3), 0, 0);        // 30
+    putRaw(p, 3, 0x0A4C, qtyToRaw(1), 0, 0);               // one bundle of 50
+    putRaw(p, 4, ID_TURNIPS_SPOILED, 0, 0, 0);
+    putRaw(p, 5, 0x16DB, qtyToRaw(5), 0, 0);               // tickets: not turnips
+    TurnipHold h = turnipsInPockets(p);
+    CHECK(h.turnips == 1080 && h.slots == 3 && h.spoiledSlots == 1);
+}
+
 static const char* BUILTIN[] = { "gold roses", "pearl", "golden axe", "does not exist" };
 
 static void testFavorites() {
@@ -536,6 +599,7 @@ int main() {
     testValuesStatus();
     testItems();
     testStackRules();
+    testTurnips();
     testFavorites();
     testLoadoutsFiles();
     testRegions();

@@ -875,4 +875,105 @@ int regionsHashOk(const uint8_t* plain, size_t size, const RegionRef* r, int n, 
     return ok;
 }
 
+// ------------------------------ turnip market ------------------------------
+bool readTurnipWeek(const uint8_t* m, size_t size, TurnipWeek& w) {
+    w = TurnipWeek();
+    if (!m || size != MAIN_SIZE_30) return false;
+    const uint8_t* t = m + TURNIP_OFF_30;
+    w.buy = rd32(t);
+    for (int i = 0; i < TURNIP_SLOTS; i++) w.price[i] = rd32(t + 4 + i * 4);
+    w.pattern = rd32(t + 4 + TURNIP_SLOTS * 4);
+    const uint8_t* d = m + SAVE_DATE_OFF_30;
+    GameDate g;
+    g.year = d[0] | (d[1] << 8); g.month = d[2]; g.day = d[3]; g.hour = d[4]; g.minute = d[5];
+    g.valid = g.year >= 2000 && g.year <= 2100 && g.month >= 1 && g.month <= 12 && g.day >= 1 && g.day <= 31 &&
+              g.hour <= 23 && g.minute <= 59;
+    w.saved = g;
+    // The game buys at 90..110 and sells at up to 660 (large spike); anything else is odd.
+    bool odd = w.buy < 90 || w.buy > 110 || w.pattern > 3;
+    for (int i = TURNIP_FIRST_SELL; i < TURNIP_SLOTS; i++) if (w.price[i] == 0 || w.price[i] > 999) odd = true;
+    w.unusual = odd;
+    w.present = true;
+    return true;
+}
+
+const char* turnipPatternName(uint32_t p) {
+    static const char* const N[4] = { "Fluctuating", "Large spike", "Decreasing", "Small spike" };
+    return p < 4 ? N[p] : nullptr;
+}
+
+TurnipStats turnipStats(const TurnipWeek& w) {
+    TurnipStats st;
+    if (!w.present) return st;
+    double sum = 0;
+    for (int i = TURNIP_FIRST_SELL; i < TURNIP_SLOTS; i++) {
+        uint32_t v = w.price[i];
+        if (st.minSlot < 0 || v < st.min) { st.min = v; st.minSlot = i; }
+        if (st.maxSlot < 0 || v > st.max) { st.max = v; st.maxSlot = i; }
+        sum += v;
+    }
+    st.avg = sum / (TURNIP_SLOTS - TURNIP_FIRST_SELL);
+    return st;
+}
+
+int turnipSlotAt(int weekday, int hour) {
+    if (weekday < 0 || weekday > 6 || hour < 0 || hour > 23) return -1;
+    if (hour < 5) { weekday = (weekday + 6) % 7; hour += 24; }   // before 5 AM: still the previous game day
+    if (weekday == 0) return 0;
+    return 2 * weekday + (hour >= 12 ? 1 : 0);
+}
+
+const char* turnipSlotName(int slot) {
+    static const char* const N[TURNIP_SLOTS] = { "Sun", "Sun", "Mon AM", "Mon PM", "Tue AM", "Tue PM", "Wed AM", "Wed PM",
+                                                 "Thu AM", "Thu PM", "Fri AM", "Fri PM", "Sat AM", "Sat PM" };
+    return slot >= 0 && slot < TURNIP_SLOTS ? N[slot] : "?";
+}
+
+// Howard Hinnant's days_from_civil / civil_from_days.
+long daysFromCivil(int y, int m, int d) {
+    y -= m <= 2;
+    const long era = (y >= 0 ? y : y - 399) / 400;
+    const unsigned yoe = (unsigned)(y - era * 400);
+    const unsigned doy = (153 * (m + (m > 2 ? -3 : 9)) + 2) / 5 + d - 1;
+    const unsigned doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    return era * 146097 + (long)doe - 719468;
+}
+void civilFromDays(long z, int& y, int& m, int& d) {
+    z += 719468;
+    const long era = (z >= 0 ? z : z - 146096) / 146097;
+    const unsigned doe = (unsigned)(z - era * 146097);
+    const unsigned yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
+    const unsigned doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    const unsigned mp = (5 * doy + 2) / 153;
+    d = (int)(doy - (153 * mp + 2) / 5 + 1);
+    m = (int)(mp < 10 ? mp + 3 : mp - 9);
+    y = (int)(yoe + era * 400 + (m <= 2));
+}
+
+long gameWeekStart(const GameDate& g) {
+    long day = daysFromCivil(g.year, g.month, g.day);
+    if (g.hour < 5) day -= 1;                         // the game day starts at 5 AM
+    long wd = ((day % 7) + 7 + 4) % 7;                // 1970-01-01 was a Thursday (4); 0 = Sunday
+    return day - wd;
+}
+
+WeekStatus turnipWeekStatus(const GameDate& saved, const GameDate& now) {
+    if (!saved.valid || !now.valid) return WEEK_UNKNOWN;
+    long a = gameWeekStart(saved), b = gameWeekStart(now);
+    return a == b ? WEEK_CURRENT : (a < b ? WEEK_PAST : WEEK_FUTURE);
+}
+
+TurnipHold turnipsInPockets(const uint8_t* pockets) {
+    TurnipHold h;
+    if (!pockets) return h;
+    for (int s = 1; s <= SLOT_COUNT; s++) {
+        SlotRec r = readSlot(pockets, s);
+        if (r.id >= ID_TURNIPS_10 && r.id <= ID_TURNIPS_100) {
+            h.turnips += (long)(r.id - ID_TURNIPS_10 + 1) * 10 * rawToQty(r.raw);
+            h.slots++;
+        } else if (r.id == ID_TURNIPS_SPOILED) h.spoiledSlots++;
+    }
+    return h;
+}
+
 } // namespace pp

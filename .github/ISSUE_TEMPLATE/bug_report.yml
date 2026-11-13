@@ -17,6 +17,7 @@ body:
         - The game says the save data is corrupted / offers to restore it
         - An item, quantity or value is wrong in the game
         - The app crashed, froze or showed an error
+        - The Turnips panel doesn't match the game (prices, pattern or week)
         - Something else
     validations:
       required: true
@@ -36,7 +37,7 @@ body:
     attributes:
       label: Power Pockets version
       description: Shown in System › Info › Version.
-      placeholder: "1.0.1"
+      placeholder: "1.1.0"
     validations:
       required: true
   - type: input

@@ -18,6 +18,7 @@
 #include <cstring>
 #include <cstdarg>
 #include <algorithm>
+#include <cstdlib>
 
 namespace pp {
 
@@ -61,7 +62,7 @@ static const int DROW_H = 64, DROW_PITCH = 68;
 static const uint32_t TOAST_MS = 3000, HOLD_CONFIRM_MS = 1500;
 static const int ACCEL_FRAMES = 120;                    // ~2 s at 60 fps
 
-enum Panel { P_POCKETS, P_FAVS, P_CATALOG, P_MONEY, P_LOADOUTS, P_SYSTEM, P_COUNT };
+enum Panel { P_POCKETS, P_FAVS, P_CATALOG, P_MONEY, P_TURNIPS, P_LOADOUTS, P_SYSTEM, P_COUNT };
 enum ToastKind { T_OK, T_INFO, T_WARN, T_ERR };
 enum Icon { IC_STAR = 0, IC_CHECK, IC_WARN, IC_LOCK, IC_LOCK_LIGHT, IC_CROSS };
 
@@ -345,6 +346,7 @@ struct Ui::Impl {
                 case P_FAVS: drawFavorites(); break;
                 case P_CATALOG: drawCatalog(); break;
                 case P_MONEY: drawMoney(); break;
+                case P_TURNIPS: drawTurnips(); break;
                 case P_LOADOUTS: drawLoadouts(); break;
                 default: drawSystem(); break;
             }
@@ -393,7 +395,7 @@ struct Ui::Impl {
         keycap("R", 1192, 100, false, panel == P_COUNT - 1 || !modals.empty());
         for (int i = 0; i < P_COUNT; i++) {
             bool act = i == panel;
-            SDL_Rect r = act ? SDL_Rect{ 104 + i * 180, 92, 176, 52 } : SDL_Rect{ 104 + i * 180, 96, 176, 48 };
+            SDL_Rect r = act ? SDL_Rect{ 104 + i * 154, 92, 150, 52 } : SDL_Rect{ 104 + i * 154, 96, 150, 48 };
             fill({ r.x + 4, r.y, r.w - 8, r.h }, act ? C::panel : C::tabIdle);
             fill({ r.x, r.y + 4, r.w, r.h - 4 }, act ? C::panel : C::tabIdle);
             int tw = textWidth(fSmall, S::TAB[i]);
@@ -908,6 +910,160 @@ struct Ui::Impl {
         if (nav & HidNpadButton_AnyDown) { f = (f + 1) % 4; dirty = true; }
         if (down & HidNpadButton_Y) openMoneyStepper(f);
         else if (down & HidNpadButton_A) moneyMenu(f);
+    }
+
+    // -------------------------------- Turnips ------------------------------
+    // Read-only: the week's prices as the game stored them in main.dat. Nothing here
+    // can change the save; the panel has no action.
+    TurnipWeek tw;
+    GameDate nowDate;
+    int nowWday = -1;
+    bool clockOk = false;
+    uint32_t turnipsAt = 0;
+    void refreshTurnips() {
+        tw = TurnipWeek();
+        if (e->turnips) e->turnips(tw);
+        nowDate = GameDate(); nowWday = -1;
+        clockOk = e->clock && e->clock(nowDate, nowWday) && nowDate.valid && nowWday >= 0 && nowWday <= 6;
+        turnipsAt = SDL_GetTicks();
+    }
+    WeekStatus weekStatus() const { return clockOk ? turnipWeekStatus(tw.saved, nowDate) : WEEK_UNKNOWN; }
+    // Current price slot, only when the stored prices are this week's.
+    int currentSlot() const { return weekStatus() == WEEK_CURRENT ? turnipSlotAt(nowWday, nowDate.hour) : -1; }
+    std::string weekText(const GameDate& g) const {
+        int y, m, d;
+        civilFromDays(gameWeekStart(g), y, m, d);
+        return fmt("Sun %d %s %d", d, S::MONTHS3[(m - 1) % 12], y);
+    }
+    std::string patternText() const {
+        const char* n = turnipPatternName(tw.pattern);
+        return n ? std::string(n) : fmt(S::TN_UNKNOWN_PAT, (unsigned)tw.pattern);
+    }
+    // Thick line made of small squares (the renderer only fills rectangles).
+    void lineSeg(int x0, int y0, int x1, int y1, int t, SDL_Color c) {
+        int dx = x1 - x0, dy = y1 - y0;
+        int n = std::max(std::abs(dx), std::abs(dy));
+        int step = std::max(1, t - 1);
+        for (int i = 0; i <= n; i += step) fill({ x0 + (n ? dx * i / n : 0) - t / 2, y0 + (n ? dy * i / n : 0) - t / 2, t, t }, c);
+        fill({ x1 - t / 2, y1 - t / 2, t, t }, c);
+    }
+    std::string turnipsDetail() const {
+        if (!tw.present) return S::TN_UNSUPPORTED;
+        std::string d = fmt(S::TN_DETAIL_FMT, (unsigned)tw.buy, patternText().c_str());
+        int cs = currentSlot();
+        if (cs >= TURNIP_FIRST_SELL) d += fmt(S::TN_DETAIL_NOW_FMT, turnipSlotName(cs), (unsigned)tw.price[cs]);
+        return d;
+    }
+    void drawTurnips() {
+        if (!tw.present) {
+            if (!degradedBanner()) contextBanner(S::TN_BANNER);
+            textC(fBody, S::TN_UNSUPPORTED, C::textSecond, { 56, 340, 1168, 40 });
+            return;
+        }
+        const WeekStatus ws = weekStatus();
+        if (ws == WEEK_PAST) contextBanner(fmt(S::TN_PAST_FMT, weekText(tw.saved).c_str()), "", true);
+        else if (ws == WEEK_FUTURE) contextBanner(S::TN_FUTURE, "", true);
+        else contextBanner(S::TN_BANNER, clockOk ? fmt(S::TN_WEEK_FMT, weekText(tw.saved).c_str()) : std::string(S::TN_NO_CLOCK));
+        const TurnipStats st = turnipStats(tw);
+        const int cs = currentSlot();
+
+        // Summary card: buy price, pattern, best price.
+        SDL_Rect card = { 56, 196, 600, 100 };
+        fillRound(card, 4, C::sunken);
+        std::string lab[3] = { S::TN_DAISY, S::TN_PATTERN,
+                               st.maxSlot >= 0 ? std::string(S::TN_BEST) + S::DOT + turnipSlotName(st.maxSlot) : std::string(S::TN_BEST) };
+        std::string val[3] = { fmt("%u", (unsigned)tw.buy), patternText(), st.maxSlot >= 0 ? fmt("%u", (unsigned)st.max) : std::string("-") };
+        const int colX[3] = { 20, 226, 386 }, colW[3] = { 196, 150, 200 };
+        for (int i = 0; i < 3; i++) {
+            int x = card.x + colX[i];
+            text(fSmall, fit(fSmall, lab[i], colW[i]), C::textSecond, x, card.y + 12);
+            text(i == 1 ? fBody : fTitle, fit(i == 1 ? fBody : fTitle, val[i], colW[i]), C::textPrimary, x, card.y + (i == 1 ? 50 : 44));
+        }
+        if (tw.unusual) {
+            int x = card.x + 20;
+            if (icons) { icon(IC_WARN, x, card.y + 104); x += 28; }
+            text(fMicro, S::TN_UNUSUAL, C::warnInk, x, card.y + 106);
+        }
+
+        // Week table: Monday..Saturday x AM / PM.
+        const int ty = 332, rowH = 40, amX = 276, pmX = 466, cellW = 180;
+        textC(fSmall, S::TN_AM, C::textSecond, { amX, ty - 2, cellW, 24 });
+        textC(fSmall, S::TN_PM, C::textSecond, { pmX, ty - 2, cellW, 24 });
+        for (int day = 1; day <= 6; day++) {
+            int y = ty + 24 + (day - 1) * rowH;
+            bool today = cs >= TURNIP_FIRST_SELL && cs / 2 == day;
+            if (today) fillRound({ 56, y, 600, rowH - 4 }, 4, C::panelAlt);
+            text(fBody, S::TN_DAYS[day], today ? C::inkStrong : C::textPrimary, 76, y + (rowH - 4 - fontH(fBody)) / 2);
+            for (int half = 0; half < 2; half++) {
+                int slot = 2 * day + half;
+                SDL_Rect r = { half ? pmX : amX, y, cellW, rowH - 4 };
+                bool cur = slot == cs, past = cs >= 0 && slot < cs, best = slot == st.maxSlot;
+                if (cur) fillRound(r, 4, C::selectBg);
+                SDL_Color ink = cur ? C::selectInk : past ? C::disabledInk : (tw.price[slot] > tw.buy ? C::ok : C::textPrimary);
+                std::string v = fmt("%u", (unsigned)tw.price[slot]);
+                int w = textWidth(fBody, v);
+                int x = r.x + (r.w - w) / 2;
+                text(fBody, v, ink, x, r.y + (r.h - fontH(fBody)) / 2);
+                if (best) favMark(x - 28, r.y + (r.h - 20) / 2);
+            }
+        }
+
+        // Week graph.
+        SDL_Rect g = { 680, 196, 544, 248 };
+        fillRound(g, 4, C::sunken);
+        const int gx0 = g.x + 56, gx1 = g.x + g.w - 24, gy0 = g.y + 20, gy1 = g.y + g.h - 44;
+        uint32_t lo = std::min(st.min, tw.buy), hi = std::max(st.max, tw.buy);
+        if (hi <= lo) hi = lo + 1;
+        auto py = [&](uint32_t v) { return gy1 - (int)((double)(v - lo) * (gy1 - gy0) / (double)(hi - lo)); };
+        auto px = [&](int slot) { return gx0 + (slot - TURNIP_FIRST_SELL) * (gx1 - gx0) / (TURNIP_SLOTS - 1 - TURNIP_FIRST_SELL); };
+        fill({ gx0, gy1 + 8, gx1 - gx0, 2 }, C::lineSoft);
+        for (int x = gx0; x < gx1; x += 14) fill({ x, py(tw.buy) - 1, 8, 2 }, C::modifiedInk);   // Daisy Mae's price
+        textR(fMicro, fmt("%u", (unsigned)hi), C::textSecond, gx0 - 10, gy0 - 8);
+        textR(fMicro, fmt("%u", (unsigned)lo), C::textSecond, gx0 - 10, gy1 - 8);
+        for (int s = TURNIP_FIRST_SELL; s + 1 < TURNIP_SLOTS; s++)
+            lineSeg(px(s), py(tw.price[s]), px(s + 1), py(tw.price[s + 1]), 3, C::textPrimary);
+        for (int s = TURNIP_FIRST_SELL; s < TURNIP_SLOTS; s++) {
+            bool cur = s == cs;
+            int k = cur ? 12 : 8;
+            fill({ px(s) - k / 2, py(tw.price[s]) - k / 2, k, k }, cur ? C::selectBg : (s == st.maxSlot ? C::modified : C::textPrimary));
+        }
+        for (int day = 1; day <= 6; day++) {
+            int cx = (px(2 * day) + px(2 * day + 1)) / 2;
+            textC(fMicro, S::TN_DAYS3[day], (cs >= 0 && cs / 2 == day) ? C::inkStrong : C::textSecond, { cx - 30, gy1 + 14, 60, 20 });
+        }
+        text(fMicro, fit(fMicro, fmt(S::TN_STATS_FMT, (unsigned)st.min, (unsigned)st.max, st.avg), 1224 - 692), C::textSecond, 692, g.y + g.h + 8);
+
+        // Turnips in the pockets and what they are worth.
+        SDL_Rect pc = { 680, 484, 544, 108 };
+        fillRound(pc, 4, C::sunken);
+        TurnipHold h = turnipsInPockets(e->pockets);
+        int tx = pc.x + 20;
+        if (glyphsOn()) { glyph(ID_TURNIPS_100, tx, pc.y + 14); tx += 32; }
+        if (h.turnips == 0) {
+            std::string l1 = S::TN_NONE;
+            if (h.spoiledSlots) l1 += fmt(S::TN_SPOILED_FMT, h.spoiledSlots, plural(h.spoiledSlots));
+            text(fBody, l1, C::textPrimary, tx, pc.y + 10);
+            text(fSmall, S::TN_NONE_HINT, C::textSecond, pc.x + 20, pc.y + 50);
+            return;
+        }
+        std::string l1 = fmt(S::TN_HOLD_FMT, formatThousands((uint64_t)h.turnips).c_str());
+        if (h.spoiledSlots) l1 += fmt(S::TN_SPOILED_FMT, h.spoiledSlots, plural(h.spoiledSlots));
+        text(fBody, fit(fBody, l1, pc.x + pc.w - 20 - tx), C::textPrimary, tx, pc.y + 10);
+        std::string l2, l3;
+        if (ws != WEEK_CURRENT && ws != WEEK_UNKNOWN) l2 = S::TN_STALE_VALUE;
+        else {
+            if (cs == 0) l2 = S::TN_SUNDAY;
+            else if (cs >= TURNIP_FIRST_SELL)
+                l2 = fmt(S::TN_NOW_FMT, turnipSlotName(cs), (unsigned)tw.price[cs], formatThousands((uint64_t)h.turnips * tw.price[cs]).c_str());
+            // Best price from now on (the whole week when the clock is unknown).
+            int from = cs >= TURNIP_FIRST_SELL ? cs + 1 : TURNIP_FIRST_SELL, bs = -1;
+            for (int s = from; s < TURNIP_SLOTS; s++) if (bs < 0 || tw.price[s] > tw.price[bs]) bs = s;
+            if (bs < 0) l3 = S::TN_NO_BEST;
+            else l3 = fmt(cs >= 0 ? S::TN_BEST_FMT : S::TN_BEST_WEEK_FMT, turnipSlotName(bs), (unsigned)tw.price[bs],
+                          formatThousands((uint64_t)h.turnips * tw.price[bs]).c_str());
+        }
+        if (!l2.empty()) text(fSmall, fit(fSmall, l2, pc.w - 40), C::textSecond, pc.x + 20, pc.y + 48);
+        if (!l3.empty()) text(fSmall, fit(fSmall, l3, pc.w - 40), C::textSecond, pc.x + 20, pc.y + 76);
     }
 
     // ------------------------------- Loadouts ------------------------------
@@ -1557,6 +1713,7 @@ struct Ui::Impl {
                     if (!n.empty()) d += S::DOT + n;
                 }
                 break;
+            case P_TURNIPS: d = turnipsDetail(); break;
             case P_MONEY: {
                 int i = focus[P_MONEY];
                 d = std::string(S::VAL_NAME[i]) + S::DOT + formatThousands(e->vals[i]);
@@ -1597,10 +1754,11 @@ struct Ui::Impl {
                 case P_FAVS: y = S::H_TAKE; yOff = e->favorites->list().empty(); break;
                 case P_CATALOG: y = focus[P_CATALOG] == 0 ? S::H_TYPE : S::H_TAKE; yOff = !itemsLoaded(); break;
                 case P_MONEY: y = S::H_MODIFY; break;
+                case P_TURNIPS: y = "\xE2\x80\x94"; yOff = true; break;
                 case P_LOADOUTS: y = S::H_LOAD; yOff = !lo[focus[P_LOADOUTS]].exists; break;
                 default: y = "\xE2\x80\x94"; yOff = true; break;
             }
-            left.push_back({ "A", true, S::H_ACTIONS, false, false });
+            left.push_back({ "A", true, S::H_ACTIONS, panel == P_TURNIPS, false });
             left.push_back({ "Y", true, y, yOff, false });
             left.push_back({ "B", true, S::H_BACK, true, false });
             int n = pending();
@@ -1738,6 +1896,7 @@ struct Ui::Impl {
             case P_FAVS: favsInput(down, nav); break;
             case P_CATALOG: catalogInput(down, nav); break;
             case P_MONEY: moneyInput(down, nav); break;
+            case P_TURNIPS: break;                              // read-only panel: nothing to do
             case P_LOADOUTS: loadoutsInput(down, nav); break;
             default: systemInput(down, nav); break;
         }
@@ -1745,6 +1904,7 @@ struct Ui::Impl {
     void onPanelEnter() {
         if (panel == P_LOADOUTS) refreshLoadouts();
         if (panel == P_SYSTEM) refreshInfo();
+        if (panel == P_TURNIPS) refreshTurnips();
         dirty = true;
     }
 
@@ -1858,6 +2018,8 @@ bool Ui::frame(uint64_t down, uint64_t held) {
         d.input(down, held);
     }
     if (!d.toast.empty() && SDL_GetTicks() > d.toastUntil) { d.toast.clear(); d.dirty = true; }
+    // The Turnips panel follows the clock (AM/PM, day change): re-read it every 30 s.
+    if (d.panel == P_TURNIPS && d.ready() && d.modals.empty() && SDL_GetTicks() - d.turnipsAt > 30000) { d.refreshTurnips(); d.dirty = true; }
     if (d.dirty) { d.dirty = false; d.rebuild(); }
     d.render();
     return !d.quit;

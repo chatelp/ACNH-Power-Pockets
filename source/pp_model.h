@@ -301,6 +301,56 @@ std::string stateSignature(const uint8_t* a, size_t na, const uint8_t* b, size_t
 bool writeStateMark(const char* path, const std::string& signature, bool pairPresent);
 bool stateMarkMatches(const char* path, const std::string& signature);   // true only for "<signature> ok"
 
+// ------------------------------ turnip market ------------------------------
+// Read-only view of the Stalk Market. The game computes the whole week's prices
+// when the week starts and keeps them in main.dat; nothing here predicts anything,
+// and nothing here writes to the save.
+// main.dat 3.0.x layout (NHSE MainSaveOffsets30: ShopKabu = GSaveShop + 0x2D40):
+//   +0x00 u32 Daisy Mae's buy price
+//   +0x04 u32[14] sell prices: Sunday AM, Sunday PM, Monday AM ... Saturday PM
+//   +0x3C u32 pattern (0 Fluctuating, 1 Large spike, 2 Decreasing, 3 Small spike)
+//   +0x40 u32 (spike start, unused here)
+// The date of the last save comes from the offset used by the Turnips homebrew (averne).
+static const uint32_t TURNIP_OFF_30    = 0x490770;
+static const uint32_t SAVE_DATE_OFF_30 = 0x97D670;    // u16 year, u8 month, day, hour, minute, second
+static const size_t   MAIN_SIZE_30     = 0x9B0E90;
+static const int      TURNIP_SLOTS     = 14;          // index 2*day + (PM ? 1 : 0), day 0 = Sunday
+static const int      TURNIP_FIRST_SELL = 2;          // Monday AM
+
+struct GameDate { int year = 0, month = 0, day = 0, hour = 0, minute = 0; bool valid = false; };
+struct TurnipWeek {
+    bool     present = false;          // read from a 3.0.x main.dat
+    uint32_t buy = 0;
+    uint32_t price[TURNIP_SLOTS] = {};
+    uint32_t pattern = 0;
+    GameDate saved;                    // last save, game clock
+    bool     unusual = false;          // a value outside what the game produces (shown, never fixed)
+};
+// `mainPlain` is the decrypted main.dat. Returns false (week.present = false) when the
+// size is not the 3.0.x one.
+bool readTurnipWeek(const uint8_t* mainPlain, size_t size, TurnipWeek& week);
+const char* turnipPatternName(uint32_t pattern);      // nullptr when unknown
+struct TurnipStats { uint32_t min = 0, max = 0; int minSlot = -1, maxSlot = -1; double avg = 0; };
+TurnipStats turnipStats(const TurnipWeek& week);     // over Monday AM .. Saturday PM
+// Price slot in effect at this local time: 0 on Sunday (Daisy Mae), else 2..13. The game
+// day starts at 5 AM, the PM price at noon. `weekday`: 0 = Sunday.
+int turnipSlotAt(int weekday, int hour);
+const char* turnipSlotName(int slot);                 // "Mon AM" ... "Sat PM", "Sun"
+// Days since 1970-01-01 of a civil date (proleptic Gregorian).
+long daysFromCivil(int year, int month, int day);
+enum WeekStatus { WEEK_CURRENT, WEEK_PAST, WEEK_FUTURE, WEEK_UNKNOWN };
+// Compares the game week (Sunday 5 AM to Sunday 5 AM) of the last save with now.
+WeekStatus turnipWeekStatus(const GameDate& saved, const GameDate& now);
+// Day number of the Sunday that starts the game week of `d` (for "week of ..." texts).
+long gameWeekStart(const GameDate& d);
+void civilFromDays(long days, int& year, int& month, int& day);
+
+// Turnips carried in the pockets: items 0x0A48..0x0A51 are bundles of 10..100 turnips,
+// each slot holds up to 10 bundles. 0x0A52 = spoiled turnips (worth nothing).
+static const uint16_t ID_TURNIPS_10 = 0x0A48, ID_TURNIPS_100 = 0x0A51, ID_TURNIPS_SPOILED = 0x0A52;
+struct TurnipHold { long turnips = 0; int slots = 0; int spoiledSlots = 0; };
+TurnipHold turnipsInPockets(const uint8_t* pockets);
+
 // Read-only diagnostics.
 struct RegionRef { uint32_t off; uint32_t len; };
 typedef uint32_t (*HashFn)(const uint8_t*, size_t);

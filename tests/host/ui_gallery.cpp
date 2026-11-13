@@ -85,6 +85,7 @@ int main(int argc, char** argv) {
     put(pockets, 11, I("iron nugget"), 29);       put(pockets, 12, I("star fragment"), 4);
     put(pockets, 13, I("straw hat (Red)"), 0);    put(pockets, 14, I("denim jacket (Blue)"), 0);
     put(pockets, 15, I("rain boots (Yellow)"), 0);
+    put(pockets, 16, I("100 turnips"), 3);                 // 4 bundles of 100
     uint32_t vals[4] = { 12345, 4800000, 230500, 98000 };
 
     uint8_t lo[POCKETS_BYTES];
@@ -102,9 +103,14 @@ int main(int argc, char** argv) {
     EngineHooks h;
     h.pockets = pockets; h.vals = vals; h.items = &items; h.favorites = &favs; h.stack = &stack; h.limits = &limits; h.glyphs = &glyphs;
     h.saveReady = true; h.editSupported = true; h.loadoutNames = LOADOUT_NAMES; h.loadoutCount = 5;
-    h.sdDir = sd; h.version = "1.0.1";
+    h.sdDir = sd; h.version = "1.1.0";
     h.apply = [&]() { applied = true; return ER_OK; };
     h.restore = [&]() { return ER_OK; };
+    TurnipWeek week; week.present = true; week.buy = 98; week.pattern = 1;
+    week.saved.year = 2026; week.saved.month = 11; week.saved.day = 11; week.saved.hour = 9; week.saved.valid = true;
+    { const uint32_t pr[14] = { 0, 0, 85, 80, 76, 72, 110, 160, 532, 201, 140, 90, 60, 50 }; memcpy(week.price, pr, sizeof pr); }
+    h.turnips = [&](TurnipWeek& w) { w = week; return true; };
+    h.clock = [&](GameDate& g, int& wd) { g = week.saved; g.hour = 14; wd = 3; return true; };
     h.doctor = [&]() { return ER_OK; };
     h.checkBackup = [&](bool) { return BC_OK; };
     h.writeSessionBackup = [&]() { preEdit = true; return true; };
@@ -143,7 +149,7 @@ int main(int argc, char** argv) {
       for (size_t i = 0; i < favs.list().size(); i++) if (favs.list()[i].builtin) builtin.push_back(favs.list()[i].label);
       for (size_t i = 0; i < builtin.size(); i++) if (builtin[i] == "Nook Miles Ticket") nmt = 3 + (int)i; }
     press(ui, DOWN, nmt); press(ui, A); press(ui, DOWN); press(ui, A);     // "Take with quantity..."
-    press(ui, UP); press(ui, LEFT); press(ui, A); idle(ui);                // 1 -> 11 -> 10, back in Pockets
+    press(ui, UP); press(ui, A); idle(ui);                                 // 1 -> 10 (tickets stack to 10), back in Pockets
     press(ui, Y, 3);                                                       // three empty slots filled
     settle(ui);
     shot("pockets");
@@ -167,6 +173,10 @@ int main(int argc, char** argv) {
     press(ui, DOWN, 2); press(ui, Y); press(ui, UP, 2); idle(ui);          // Nook Miles + 200,000, editor open
     shot("bells-miles");
     press(ui, A); idle(ui);
+
+    // Turnips: the week's prices read from the save (fake clock: Wednesday afternoon).
+    press(ui, R); idle(ui);
+    shot("turnips");
 
     // Loadouts with their preview.
     press(ui, R); idle(ui);

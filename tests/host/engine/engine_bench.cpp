@@ -141,6 +141,14 @@ static Save makeSave(size_t pSz = P_SZ, size_t mSz = M_SZ) {
     encStore(&s.pPlain[WALLET], m.vals[0]); encStore(&s.pPlain[BANK], m.vals[1]);
     encStore(&s.pPlain[MILES], m.vals[2]);  encStore(&s.mPlain[LOAN], m.vals[3]);
     for (int i = 0; i < 8; i++) wr32(&s.mPlain[HEAL0 + i * HEAL_STEP], i == 2 ? 0xDEADBEEFu : 0);   // one "poisoned" field
+    if (mSz >= M_SZ) {                                        // Stalk Market: a large-spike week, saved Wed 11 Nov 2026
+        static const uint32_t prices[14] = { 0, 0, 85, 80, 76, 72, 110, 160, 532, 201, 140, 90, 60, 50 };
+        wr32(&s.mPlain[pp::TURNIP_OFF_30], 98);
+        for (int i = 0; i < 14; i++) wr32(&s.mPlain[pp::TURNIP_OFF_30 + 4 + i * 4], prices[i]);
+        wr32(&s.mPlain[pp::TURNIP_OFF_30 + 0x3C], 1);
+        uint8_t* d = &s.mPlain[pp::SAVE_DATE_OFF_30];
+        d[0] = 2026 & 0xFF; d[1] = 2026 >> 8; d[2] = 11; d[3] = 11; d[4] = 9; d[5] = 41; d[6] = 3;
+    }
     if (pSz >= P_SZ) fixHashes(s.pPlain, P_REGS, 2);          // valid hashes keep the engine's region scan fast
     if (mSz >= M_SZ) fixHashes(s.mPlain, M_REGS, 19);
     encrypt(s);
@@ -226,7 +234,7 @@ template <class Build> static void launch(const World& w, const char* label, Bui
 static const uint64_t A = HidNpadButton_A, B = HidNpadButton_B, Y = HidNpadButton_Y, L = HidNpadButton_L, R = HidNpadButton_R,
                       UP = HidNpadButton_Up, DOWN = HidNpadButton_Down, LEFT = HidNpadButton_Left, RIGHT = HidNpadButton_Right,
                       PLUS = HidNpadButton_Plus, MINUS = HidNpadButton_Minus;
-enum { P_POCKETS, P_FAVS, P_CATALOG, P_MONEY, P_LOADOUTS, P_SYSTEM };
+enum { P_POCKETS, P_FAVS, P_CATALOG, P_MONEY, P_TURNIPS, P_LOADOUTS, P_SYSTEM };
 enum { ROW_RESTORE, ROW_SESSION, ROW_DOCTOR };
 static const int HOLD_FRAMES = 110;                             // 1.76 s of virtual time > 1.5 s
 
@@ -738,6 +746,12 @@ static void scnRealSave(const Save&) {
     const int hp = validHashes(s.pPlain, P_REGS, 2), hm = validHashes(s.mPlain, M_REGS, 19);
     printf("    as dumped: personal %d/2 hashes valid, main %d/19\n", hp, hm);
     const bool stale = hp != 2 || hm != 19;
+    pp::TurnipWeek tw;
+    if (pp::readTurnipWeek(s.mPlain.data(), s.mPlain.size(), tw)) {          // compare with the game / Turnips
+        printf("    turnips: Daisy Mae %u, pattern %u, saved %04d-%02d-%02d %02d:%02d%s\n      ", (unsigned)tw.buy, (unsigned)tw.pattern,
+               tw.saved.year, tw.saved.month, tw.saved.day, tw.saved.hour, tw.saved.minute, tw.unusual ? " (unusual values)" : "");
+        for (int i = 2; i < 14; i++) printf("%s %u%s", pp::turnipSlotName(i), (unsigned)tw.price[i], i < 13 ? " \xC2\xB7 " : "\n");
+    }
 
     World w = makeWorld(g_scn, s);
     launch(w, "Save Doctor", [&]() {
@@ -778,6 +792,25 @@ static void scnRealSave(const Save&) {
             printf("    after Apply (ticket in slot %d): personal 2/2, main 19/19, nothing else changed\n", freeSlot);
         });
         quitFromPanel();
+    });
+}
+
+// Turnips panel: the real main.cpp hook reads the Stalk Market from the decrypted main.dat
+// (fake clock: Wednesday 11 Nov 2026, 14:30). Read-only: no action, no write of any kind.
+static void scnTurnips(const Save& s0) {
+    g_scn = "turnips_read_only";
+    World w = makeWorld(g_scn, s0);
+    launch(w, "session", [&]() {
+        idle(2);
+        panel(P_POCKETS, P_TURNIPS);
+        SEE("Daisy Mae (Sunday)"); SEE("98"); SEE("Large spike"); SEE("532");
+        SEE("Week of Sun 8 Nov 2026"); SEE("now Wed PM: 160");
+        SEE("No turnips in your pockets");
+        NOT_SEE("These prices are from the week of");
+        press(A); idle(2); press(Y); idle(2); press(HidNpadButton_X); idle(2);          // nothing to do here
+        SEE("Up to date"); SEE("Daisy Mae (Sunday)");
+        probe([&]() { CHECK(counters.nandWrites == 0 && counters.commits == 0 && counters.sdCreates == 0); });
+        panel(P_TURNIPS, P_POCKETS); quitFromPanel();
     });
 }
 
@@ -924,6 +957,7 @@ int main(int argc, char** argv) {
         { "stale_hash_repaired", scnStaleHash },
         { "real_save", scnRealSave },
         { "read_only_save", [](const Save&) { scnReadOnly(); } },
+        { "turnips_read_only", scnTurnips },
         { "launch_guards", scnGuards },
         { "review_revert_focus", scnReviewRevertFocus },
         { "commit_fails", scnCommitFailsKnown },

@@ -65,6 +65,9 @@ struct EngineHooks {
     std::function<void(InfoData&)> info;               // read-only diagnostics
     std::function<std::string(const char* guide, const char* initial)> keyboard;
     std::function<void()> reloadLists;                 // favorites + nonstackable.txt
+    // ---- Read-only views (never write anything) ----
+    std::function<bool(TurnipWeek&)> turnips;          // Stalk Market of the loaded main.dat
+    std::function<bool(GameDate& now, int& weekday)> clock;   // console clock, weekday 0 = Sunday
 };
 
 class Ui {
