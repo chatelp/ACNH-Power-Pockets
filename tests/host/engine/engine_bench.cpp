@@ -814,6 +814,19 @@ static void scnTurnips(const Save& s0) {
     });
 }
 
+// L / R wrap around the panels: L on Pockets opens System, R on System comes back.
+static void scnPanelsWrap(const Save& s0) {
+    g_scn = "panels_wrap";
+    World w = makeWorld(g_scn, s0);
+    launch(w, "session", [&]() {
+        idle(2); SEE("20 slots");
+        press(L); idle(2); SEE("Restore SD backup to console"); NOT_SEE("20 slots");
+        press(R); idle(2); SEE("20 slots");
+        press(R, P_SYSTEM + 1); idle(2); SEE("20 slots");              // a full turn to the right
+        quitFromPanel();
+    });
+}
+
 // Unexpected file size (another game version): read-only, no mutation, no write of any kind.
 static void scnReadOnly() {
     g_scn = "read_only_save";
@@ -958,6 +971,7 @@ int main(int argc, char** argv) {
         { "real_save", scnRealSave },
         { "read_only_save", [](const Save&) { scnReadOnly(); } },
         { "turnips_read_only", scnTurnips },
+        { "panels_wrap", scnPanelsWrap },
         { "launch_guards", scnGuards },
         { "review_revert_focus", scnReviewRevertFocus },
         { "commit_fails", scnCommitFailsKnown },

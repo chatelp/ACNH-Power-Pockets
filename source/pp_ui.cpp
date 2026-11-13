@@ -391,8 +391,8 @@ struct Ui::Impl {
 
     void drawTabs() {
         fill({ 32, 88, 1216, 56 }, C::woodDark);
-        keycap("L", 48, 100, false, panel == 0 || !modals.empty());
-        keycap("R", 1192, 100, false, panel == P_COUNT - 1 || !modals.empty());
+        keycap("L", 48, 100, false, !modals.empty());
+        keycap("R", 1192, 100, false, !modals.empty());
         for (int i = 0; i < P_COUNT; i++) {
             bool act = i == panel;
             SDL_Rect r = act ? SDL_Rect{ 104 + i * 154, 92, 150, 52 } : SDL_Rect{ 104 + i * 154, 96, 150, 48 };
@@ -1762,8 +1762,8 @@ struct Ui::Impl {
             left.push_back({ "Y", true, y, yOff, false });
             left.push_back({ "B", true, S::H_BACK, true, false });
             int n = pending();
-            right.push_back({ "L", false, "", panel == 0, false });
-            right.push_back({ "R", false, S::H_PANEL, panel == P_COUNT - 1, false });
+            right.push_back({ "L", false, "", false, false });
+            right.push_back({ "R", false, S::H_PANEL, false, false });
             right.push_back({ "+", false, n ? fmt("%s (%d)", S::H_REVIEW, n) : std::string(S::H_REVIEW), false, n > 0 });
             right.push_back({ "-", false, S::H_DISCARD, n == 0, false });
         }
@@ -1886,8 +1886,9 @@ struct Ui::Impl {
         uint64_t nav = navMask(down, held);
         if (!ready()) { if (down & (HidNpadButton_A | HidNpadButton_Plus)) quit = true; return; }
         if (!modals.empty()) { modalInput(down, held, nav); return; }
-        if ((down & HidNpadButton_L) && panel > 0) { panel--; onPanelEnter(); return; }
-        if ((down & HidNpadButton_R) && panel < P_COUNT - 1) { panel++; onPanelEnter(); return; }
+        // L / R wrap around: R on the last panel goes back to the first, and L the other way.
+        if (down & HidNpadButton_L) { panel = (panel + P_COUNT - 1) % P_COUNT; onPanelEnter(); return; }
+        if (down & HidNpadButton_R) { panel = (panel + 1) % P_COUNT; onPanelEnter(); return; }
         if (down & HidNpadButton_Plus) { openReview(); return; }
         if (down & HidNpadButton_Minus) { askDiscard(); return; }
         // ZL / ZR / X: intentionally no action (upstream ZL = instant restore, ZR = Doctor).

@@ -128,7 +128,7 @@ Power Pockets has its own file name and its own folder (`switch/acnh_power_pocke
 
 | Button | Does |
 |---|---|
-| **L / R** | Switch panel |
+| **L / R** | Switch panel (it wraps around: **R** on System goes back to Pockets) |
 | **D-pad / left stick** | Move (hold to repeat) |
 | **A** | Open the action menu for the selected thing |
 | **Y** | Its default action (the first line of that menu) |
