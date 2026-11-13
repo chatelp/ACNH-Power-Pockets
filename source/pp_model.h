@@ -34,7 +34,7 @@ static const uint16_t ID_EMPTY       = 0xFFFE;
 static const uint16_t ID_MAX_VALID   = 0xFFFC;                  // 0xFFFD is EXTENSION
 static const int      QTY_MIN        = 1;                       // upstream bounds, unchanged
 static const int      QTY_MAX        = 99;
-static const int      FAV_LIMIT      = 64;
+static const int      FAV_LIMIT      = 80;
 static const uint32_t WALLET_GAME_MAX = 99999;                  // warning only, bound unchanged
 
 // Quantity convention of the +4 field.
@@ -242,7 +242,7 @@ public:
     bool   isUserAdded(uint16_t id) const;
     Result add(uint16_t id);
     Result remove(uint16_t id);
-    // Renames the overlay to <file>.bak, back to the 22 built-ins.
+    // Renames the overlay to <file>.bak, back to the built-ins only.
     bool   resetToDefaults();
 
     int  ignoredLines() const    { return ignored_; }

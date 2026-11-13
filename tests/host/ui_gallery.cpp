@@ -45,7 +45,10 @@ static const char* FAV_NAMES[] = {
     "Nook Miles Ticket", "Bell bag", "Bell voucher", "99,000 Bells", "gold roses", "cherry-blossom petal",
     "star fragment", "large star fragment", "star wand", "gold nugget", "iron nugget", "pearl", "gold bars",
     "customization kit", "golden axe", "golden net", "golden rod", "golden shovel", "golden slingshot",
-    "golden watering can", "crown (No Variations)", "royal crown (No Variations)" };
+    "golden watering can", "crown (No Variations)", "royal crown (No Variations)",
+    "apple", "cherry", "orange", "peach", "pear", "coconut",
+    "potato", "carrot", "wheat", "sugarcane", "tomato", "orange pumpkin",
+    "wood", "softwood", "hardwood", "stone", "clay", "tree branch", "bamboo piece" };
 static const char* LOADOUT_NAMES[] = { "Mining", "Fishing", "Terraforming", "Custom 1", "Custom 2" };
 
 int main(int argc, char** argv) {
@@ -69,7 +72,7 @@ int main(int argc, char** argv) {
 
     Favorites favs; StackRules stack; GlyphMap glyphs;
     remove((sd + "user_favorites.txt").c_str());
-    favs.load(items, FAV_NAMES, 22, sd + "user_favorites.txt");
+    favs.load(items, FAV_NAMES, (int)(sizeof(FAV_NAMES) / sizeof(FAV_NAMES[0])), sd + "user_favorites.txt");
     favs.add(I("red roses")); favs.add(I("sea bass")); favs.add(I("wood"));
     glyphs.build(items, (sd + "item_glyphs.txt").c_str());
     StackLimits limits; limits.load((sd + "item_stacks.txt").c_str(), items.size());

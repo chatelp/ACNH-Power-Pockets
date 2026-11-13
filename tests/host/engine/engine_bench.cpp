@@ -821,6 +821,7 @@ static void scnPanelsWrap(const Save& s0) {
     launch(w, "session", [&]() {
         idle(2); SEE("20 slots");
         press(L); idle(2); SEE("Restore SD backup to console"); NOT_SEE("20 slots");
+        NOT_SEE("built-in not found");                                  // every FAV_NAMES entry exists in items.txt
         press(R); idle(2); SEE("20 slots");
         press(R, P_SYSTEM + 1); idle(2); SEE("20 slots");              // a full turn to the right
         quitFromPanel();

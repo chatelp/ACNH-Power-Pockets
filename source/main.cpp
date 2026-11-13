@@ -169,7 +169,29 @@ static const char* FAV_NAMES[] = {
     "golden slingshot",
     "golden watering can",
     "crown (No Variations)",
-    "royal crown (No Variations)"
+    "royal crown (No Variations)",
+    // Fruits
+    "apple",
+    "cherry",
+    "orange",
+    "peach",
+    "pear",
+    "coconut",
+    // Vegetables
+    "potato",
+    "carrot",
+    "wheat",
+    "sugarcane",
+    "tomato",
+    "orange pumpkin",
+    // Common crafting materials (iron and gold nuggets are above)
+    "wood",
+    "softwood",
+    "hardwood",
+    "stone",
+    "clay",
+    "tree branch",
+    "bamboo piece"
 };
 static const int FAV_MAX = (int)(sizeof(FAV_NAMES) / sizeof(FAV_NAMES[0]));
 

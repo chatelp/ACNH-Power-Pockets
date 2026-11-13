@@ -46,7 +46,7 @@ Pick an item once, from your favorites, the catalog, or your own pockets. Each p
 | | |
 |---|---|
 | ![Favorites panel with the YOURS and BUILT-IN groups](docs/screenshots/favorites.png) | ![Action menu of a pocket slot](docs/screenshots/slot-menu.png) |
-| **Favorites.** Yours first, then the 22 built-in ones. Add or remove them from the app; they are saved on the SD card. | **One menu per slot.** Fill empty slots, change a quantity, pick the item up, favorite it, revert it, clear it. |
+| **Favorites.** Yours first, then the 41 built-in ones (fruits, vegetables and common materials among them). Add or remove them from the app; they are saved on the SD card. | **One menu per slot.** Fill empty slots, change a quantity, pick the item up, favorite it, revert it, clear it. |
 
 ### A picture and a color for every item
 
