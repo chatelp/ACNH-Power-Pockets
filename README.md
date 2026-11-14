@@ -18,7 +18,7 @@ ACNH Power Pockets is a homebrew app for the Nintendo Switch (Atmosphère). It e
 
 It is a fork of [ACNH-Save-Editor](https://github.com/cbreezy210/ACNH-Save-Editor) by cbreezy210. The save engine is the upstream one: the only thing changed in it is the name of the SD folder where it keeps its backups. The interface is new, built around inventory work. See [Where it comes from](#where-it-comes-from).
 
-![The Pockets panel: three slots just filled with Nook Miles Tickets, shown in amber until applied](docs/screenshots/pockets.png)
+![Ten slots in ten presses: Nook Miles Tickets taken from Favorites, Y pressed ten times, then the Review screen and Apply](docs/screenshots/demo.gif)
 
 ## Contents
 
@@ -104,7 +104,7 @@ Do this once, with a save you can afford to lose. It checks, on your console and
 
 Requirements: a Switch running Atmosphère, and Animal Crossing: New Horizons **3.0.x** (other save versions open read-only).
 
-1. Download the latest `ACNH-Power-Pockets-v1.0.x.zip` from the [Releases page](../../releases) (marked pre-release) and extract it to the root of the SD card. It creates `switch/acnh_power_pockets/`. Builds of every commit are also in the [Actions tab](../../actions) (GitHub login required).
+1. Download `ACNH-Power-Pockets-v1.2.0.zip` (or whatever is newest) from the [latest release](../../releases/latest) and extract it to the root of the SD card. It creates `switch/acnh_power_pockets/`. Builds of every commit are also in the [Actions tab](../../actions) (GitHub login required).
 2. Fully close the game: HOME › highlight Animal Crossing › **X** › Close. A suspended game overwrites your edits on its next autosave.
 3. Hold **R** while starting Animal Crossing to open the Homebrew Menu, then launch **ACNH Power Pockets**. Launching from the Album is refused: it doesn't give the app enough access.
 
@@ -251,7 +251,7 @@ sh tests/host/run.sh            # unit tests, parser fuzzing, item-picture rules
 sh tests/host/engine_bench.sh   # the real main.cpp on a fake console: byte-exact Apply / restore / Doctor, injected failures
 PP_REAL_SAVE=<unzipped JKSV backup> sh tests/host/engine_bench.sh real_save   # same checks on a dump of your own save
 sh tests/host/ui_shots.sh       # the real UI with a fake engine: flows and failure dialogs, with screenshots
-sh tests/host/ui_gallery.sh     # regenerates the screenshots of this README
+sh tests/host/ui_gallery.sh     # regenerates the screenshots and the demo animation of this README
 ```
 The two `ui_*` scripts need SDL2 and SDL2_ttf (`brew install sdl2 sdl2_ttf`) and Python Pillow. Pillow also enables the item-picture check in `run.sh`.
 

@@ -228,5 +228,48 @@ int main(int argc, char** argv) {
         shot("pockets-40");
         u40.shutdown();
     }
+
+    // Demo animation frames (tests/host/ui_gallery.sh turns them into demo.gif / demo.mp4):
+    // take Nook Miles Tickets x10 from Favorites, ten presses of Y, the Review, Apply.
+    // Each frame is saved with how long it stays on screen, in its file name.
+    {
+        uint8_t dp[POCKETS_BYTES]; clearAll(dp);
+        put(dp, 1, I("golden axe"), 0);   put(dp, 2, I("golden net"), 0);   put(dp, 3, I("golden rod"), 0);
+        put(dp, 4, I("golden shovel"), 0); put(dp, 5, I("golden watering can"), 0); put(dp, 6, I("ladder"), 0);
+        put(dp, 7, I("wood"), 29);        put(dp, 8, I("iron nugget"), 17); put(dp, 9, I("cherry"), 9);
+        put(dp, 10, I("star fragment"), 4);
+        uint32_t dv[4] = { 12345, 4800000, 230500, 98000 };
+        bool dApplied = false;
+        EngineHooks hd = h;
+        hd.pockets = Pockets(dp); hd.vals = dv;
+        hd.apply = [&]() { dApplied = true; return ER_OK; };
+        hd.info = [&](InfoData& d) {
+            d.saveSizeOk = true; d.personalSize = 0x74A40; d.mainSize = 0x9B0E90;
+            d.pRegOk = d.pRegCount = 2; d.mRegOk = d.mRegCount = 19; d.poisonAllZero = true;
+            d.backupPersonal = d.backupMain = d.sessionPersonal = d.sessionMain = 1;
+        };
+        Ui ud; ud.init(ren, sd); ud.start(hd); idle(ud);
+        int n = 0;
+        auto f = [&](int ms) {
+            char name[64]; snprintf(name, sizeof name, "demo/%03d_%d", n++, ms);
+            shot(name);
+        };
+        f(1400);                                                    // pockets, 10 free slots
+        press(ud, R); idle(ud); f(900);                             // Favorites
+        int yours = 0, nmtD = -1;
+        for (size_t i = 0; i < favs.list().size(); i++) if (!favs.list()[i].builtin) yours++;
+        { int k = 0; for (size_t i = 0; i < favs.list().size(); i++) if (favs.list()[i].builtin) { if (favs.list()[i].label == "Nook Miles Ticket") nmtD = yours + k; k++; } }
+        press(ud, DOWN, nmtD); idle(ud); f(700);                    // on Nook Miles Ticket
+        press(ud, A); idle(ud); f(800);                             // its menu
+        press(ud, DOWN); press(ud, A); idle(ud); f(500);            // Take with quantity...
+        press(ud, UP); idle(ud); f(900);                            // x10
+        press(ud, A); idle(ud); f(900);                             // back in Pockets, holding x10
+        press(ud, DOWN, 9); press(ud, RIGHT); press(ud, UP, 9); idle(ud);   // cursor on slot 11
+        for (int k = 0; k < 10; k++) { press(ud, Y); idle(ud); f(k == 9 ? 1100 : 330); }
+        press(ud, PLUS); idle(ud); f(2200);                         // Review: 10 changes, before >> after
+        press(ud, A); idle(ud, 8); f(2200);                         // Apply: "Changes applied"
+        if (!dApplied) printf("  !! demo: Apply was not reached\n");
+        ud.shutdown();
+    }
     return 0;
 }

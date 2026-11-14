@@ -5,7 +5,7 @@
 set -e
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 OUT="${PP_TMP:-${TMPDIR:-/tmp}}/pp_ui_gallery"
-rm -rf "$OUT"; mkdir -p "$OUT/sd"
+rm -rf "$OUT"; mkdir -p "$OUT/sd" "$OUT/demo"
 CXX="${CXX:-clang++}"
 SDL_CFLAGS="$(sdl2-config --cflags)"
 SDL_LIBS="$(sdl2-config --libs) -lSDL2_ttf"
@@ -26,3 +26,27 @@ for p in sorted(glob.glob(src + "/*.bmp")):
     Image.open(p).convert("RGB").save(out, optimize=True)
     print("wrote", out)
 EOF
+# Demo animation: frames named NNN_<milliseconds>.bmp -> docs/screenshots/demo.gif (half size)
+# and, when ffmpeg is installed, docs/screenshots/demo.mp4 (full size).
+python3 - "$OUT/demo" "$ROOT/docs/screenshots" <<'PYDEMO'
+import sys, glob, os, subprocess, shutil
+from PIL import Image
+src, dst = sys.argv[1], sys.argv[2]
+frames = sorted(glob.glob(src + "/*.bmp"))
+if not frames: sys.exit(0)
+ims, durs = [], []
+for p in frames:
+    durs.append(int(os.path.basename(p)[:-4].split("_")[1]))
+    ims.append(Image.open(p).convert("RGB"))
+small = [im.resize((640, 360), Image.LANCZOS).quantize(colors=128, method=Image.MEDIANCUT) for im in ims]
+small[0].save(dst + "/demo.gif", save_all=True, append_images=small[1:], duration=durs, loop=0, optimize=True)
+print("wrote", dst + "/demo.gif", len(ims), "frames")
+if shutil.which("ffmpeg"):
+    lst = src + "/frames.txt"
+    with open(lst, "w") as f:
+        for p, d in zip(frames, durs): f.write("file '%s'\nduration %.3f\n" % (p, d / 1000.0))
+        f.write("file '%s'\n" % frames[-1])
+    subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-f", "concat", "-safe", "0", "-i", lst, "-vf", "fps=30,format=yuv420p",
+                    "-c:v", "libx264", "-crf", "20", "-movflags", "+faststart", dst + "/demo.mp4"], check=True)
+    print("wrote", dst + "/demo.mp4")
+PYDEMO
