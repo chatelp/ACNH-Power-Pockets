@@ -374,6 +374,136 @@ int StackRules::singleCount() const {
     return n;
 }
 
+// ---------------------------- item collections -----------------------------
+void ItemCollections::reset(size_t itemCount) {
+    groups_.clear();
+    type_.assign(itemCount, IT_OTHER);
+    target_ = 0;
+    curType_ = IT_OTHER;
+    loaded_ = false;
+    ignored_ = 0;
+}
+bool ItemCollections::applyLine(const std::string& raw) {
+    std::string line = trim(raw);
+    if (line.empty() || line[0] == '#') return true;
+    size_t sp = line.find_first_of(" \t");
+    std::string word = line.substr(0, sp), rest = sp == std::string::npos ? std::string() : trim(line.substr(sp + 1));
+    if (word == "group") {
+        if (rest.empty()) { target_ = 0; return false; }
+        CollectionGroup g; g.name = rest;
+        groups_.push_back(g);
+        target_ = 0;
+        return true;
+    }
+    if (word == "collection") {
+        if (rest.empty() || groups_.empty() || groups_.back().list.size() >= 200) { target_ = 0; return false; }
+        Collection c; c.name = rest;
+        groups_.back().list.push_back(c);
+        target_ = 1;
+        return true;
+    }
+    if (word == "type") {
+        target_ = 0;
+        if (rest == "furniture") curType_ = IT_FURNITURE;
+        else if (rest == "surfaces") curType_ = IT_SURFACES;
+        else if (rest == "clothing") curType_ = IT_CLOTHING;
+        else return false;
+        target_ = 2;
+        return true;
+    }
+    // An id line: every token must be valid, or the whole line is ignored.
+    if (target_ == 0) return false;
+    std::vector<std::pair<uint16_t, uint16_t> > spans;
+    size_t i = 0;
+    while (i < line.size()) {
+        while (i < line.size() && isspace((unsigned char)line[i])) i++;
+        size_t j = i;
+        while (j < line.size() && !isspace((unsigned char)line[j])) j++;
+        if (j == i) break;
+        std::string tok = line.substr(i, j - i);
+        size_t dash = tok.find('-');
+        uint16_t a = 0, b = 0;
+        if (!parseHexId(tok.substr(0, dash), a)) return false;
+        if (dash == std::string::npos) b = a;
+        else if (!parseHexId(tok.substr(dash + 1), b)) return false;
+        if (b < a) return false;
+        spans.push_back(std::make_pair(a, b));
+        i = j;
+    }
+    for (size_t k = 0; k < spans.size(); k++)
+        for (uint32_t v = spans[k].first; v <= spans[k].second; v++) {
+            if (target_ == 2) { if (v < type_.size()) type_[v] = (uint8_t)curType_; }
+            else if (groups_.back().list.back().ids.size() < 4096) groups_.back().list.back().ids.push_back((uint16_t)v);
+        }
+    return true;
+}
+void ItemCollections::finish(const std::vector<Item>& items) {
+    std::vector<CollectionGroup> kept;
+    for (size_t g = 0; g < groups_.size(); g++) {
+        CollectionGroup out; out.name = groups_[g].name;
+        for (size_t c = 0; c < groups_[g].list.size(); c++) {
+            Collection col; col.name = groups_[g].list[c].name;
+            std::vector<uint8_t> seen(items.size(), 0);
+            const std::vector<uint16_t>& ids = groups_[g].list[c].ids;
+            for (size_t k = 0; k < ids.size(); k++)
+                if (ids[k] < items.size() && !items[ids[k]].name.empty() && !seen[ids[k]]) { seen[ids[k]] = 1; col.ids.push_back(ids[k]); }
+            if (!col.ids.empty()) out.list.push_back(col);
+        }
+        if (!out.list.empty()) kept.push_back(out);
+    }
+    groups_.swap(kept);
+}
+bool ItemCollections::load(const char* path, const std::vector<Item>& items) {
+    reset(items.size());
+    FILE* f = path ? fopen(path, "rb") : nullptr;
+    if (!f) return false;
+    char line[512];
+    int lines = 0;
+    while (fgets(line, sizeof line, f) && lines < 65536) {
+        lines++;
+        if (!applyLine(line)) ignored_++;
+    }
+    fclose(f);
+    finish(items);
+    loaded_ = true;
+    return true;
+}
+int ItemCollections::count() const {
+    int n = 0;
+    for (size_t g = 0; g < groups_.size(); g++) n += (int)groups_[g].list.size();
+    return n;
+}
+int ItemCollections::typed() const {
+    int n = 0;
+    for (size_t i = 0; i < type_.size(); i++) if (type_[i] != IT_OTHER) n++;
+    return n;
+}
+bool typeMatches(ItemType t, int filter) {
+    switch (filter) {
+        case TF_FURNITURE: return t == IT_FURNITURE;
+        case TF_SURFACES:  return t == IT_SURFACES;
+        case TF_CLOTHING:  return t == IT_CLOTHING;
+        case TF_OTHER:     return t == IT_OTHER;
+        default:           return true;
+    }
+}
+std::vector<int> filterByType(const std::vector<int>& ids, const ItemCollections& c, int filter) {
+    if (filter == TF_ALL) return ids;
+    std::vector<int> out;
+    for (size_t i = 0; i < ids.size(); i++)
+        if (ids[i] >= 0 && ids[i] <= 0xFFFF && typeMatches(c.typeOf((uint16_t)ids[i]), filter)) out.push_back(ids[i]);
+    return out;
+}
+std::vector<int> collectionItems(const Collection& c, const std::vector<Item>& items) {
+    std::vector<std::pair<std::string, int> > v;
+    for (size_t i = 0; i < c.ids.size(); i++)
+        if (c.ids[i] < items.size() && !items[c.ids[i]].name.empty()) v.push_back(std::make_pair(lower(items[c.ids[i]].name), (int)c.ids[i]));
+    std::sort(v.begin(), v.end());
+    std::vector<int> out;
+    for (size_t i = 0; i < v.size(); i++) out.push_back(v[i].second);
+    return out;
+}
+
 // ------------------------------- item glyphs -------------------------------
 // Mirrors tools/make_item_glyphs.py (parse_rules, rule_matches, classify,
 // find_color, item_color). "The LAST matching rule wins", so each item keeps the

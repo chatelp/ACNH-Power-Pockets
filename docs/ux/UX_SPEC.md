@@ -121,6 +121,8 @@ Justification :
 #### Panneau 3 — Catalogue
 - Ligne **Recherche** en tête de liste : `Rechercher : [ springy ]` ; A ou Y dessus ouvre le clavier natif (`showKeyboard`, `l.272`).
 - **X** ouvre le clavier depuis n'importe quelle page ou ligne de résultats (ajout v1.2.1 : avant, il fallait revenir à la page 1 et remonter jusqu'au champ). L'indication du champ suit le curseur : « A, Y or X to type » sur le champ, « X to search » sur un résultat. Au-delà de 40 pages, les points de pagination sont remplacés par le seul « Page n/N ».
+- **Collections** (ajout v1.3.0) : la ligne de tête porte deux cases, le champ Recherche à gauche et « Browse collections » à droite ; ◀ ▶ passent de l'une à l'autre. A ou Y sur la case ouvre la liste des 113 collections de `item_collections.txt`, groupée comme les favoris (en-têtes Styles, Furniture series, HHA themes, Clothing styles, Clothing themes ; nombre d'items à droite) ; ◀ ▶ changent de page, A ouvre une collection, B revient sans rien changer. Une collection remplace les résultats (triés A-Z) ; une nouvelle recherche remplace la collection. La case affiche ensuite le nom de la collection ouverte. Sans le fichier, la case affiche « No collections » et A n'affiche qu'un toast.
+- **Filtre de type** (ajout v1.3.0) : **ZL / ZR** font défiler All → Furniture → Walls, floors & rugs → Clothing → Other, sur les résultats d'une recherche comme d'une collection. Les items sans type connu comptent dans Other. Le filtre est rappelé à droite de la bannière (« Type: Furniture »), la bannière indique « · N shown » ; le curseur reste sur le même item s'il est toujours affiché. Liste vide : « Nothing of type "…" here. » ZL / ZR restent sans effet dans les autres panneaux.
 - **Résultats** : liste paginée (6 à 8 par page selon la charte), compteur « 42 résultats ». Chaque ligne : ID hex, nom, badges `★` et `1/slot`.
 - La dernière recherche et la position dans les résultats sont conservées quand on change de panneau.
 - Sans recherche : texte d'aide « Ⓐ pour saisir un nom (ex. "star"). »
@@ -159,7 +161,7 @@ Justification :
 | **+** | Récap | Ouvre l'écran **Récap** (Appliquer / Annuler tout / Quitter). C'est aussi la porte de sortie de l'app : conforme à la convention homebrew « + = quitter », mais en passant par le Récap. |
 | **−** | Annuler toutes les modifs | S'il y a des modifs en attente : dialogue « Annuler les N modifs ? » (focus par défaut sur « Non »). Sinon : toast « Aucune modif à annuler ». |
 | **X** | — | Aucune action (réservé). |
-| **ZL / ZR** | — | **Aucune action.** Ne déclenchent plus jamais la restauration ni le Doctor. |
+| **ZL / ZR** | Catalogue | Filtre de type du Catalogue (v1.3.0). **Aucune action ailleurs.** Ne déclenchent plus jamais la restauration ni le Doctor. |
 | **HOME** | Système | Comportement Switch standard (non intercepté). Quitter par HOME abandonne les modifs non appliquées, rien n'est écrit. |
 
 ### 3.2 Action par défaut (Y) selon le focus

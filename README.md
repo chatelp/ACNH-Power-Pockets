@@ -58,8 +58,12 @@ With the pocket upgrades from Nook's Cranny, the grid shows your 30 or 40 slots.
 
 | | |
 |---|---|
-| ![Catalog search results for sneakers, each in its own color](docs/screenshots/catalog.png) | ![Loadouts panel with a preview of the saved pockets](docs/screenshots/loadouts.png) |
-| **Catalog.** Search about 11,000 named items by name or by hex ID. | **Loadouts.** Five pocket setups saved on the SD card, with a preview. |
+| ![Catalog search results for sneakers, each in its own color](docs/screenshots/catalog.png) | ![The Japanese traditional collection, filtered to furniture](docs/screenshots/collections.png) |
+| **Catalog.** Search about 11,000 named items by name or by hex ID. | **Collections.** 113 themed lists: a Japanese traditional style, furniture series, HHA themes, clothing styles. **ZL / ZR** keep one type of item. |
+
+![Loadouts panel with a preview of the saved pockets](docs/screenshots/loadouts.png)
+
+**Loadouts.** Five pocket setups saved on the SD card, with a preview.
 
 ### Nothing is written until you apply
 
@@ -116,6 +120,7 @@ The folder should contain:
 | `items.txt` | Strongly recommended: item names, favorites and the `1/slot` protection depend on it |
 | `item_glyphs.png`, `item_glyphs.txt` | Strongly recommended: item pictures, and the kinds of items that never stack (without them, the `1/slot` protection only covers tools and the few items listed in `nonstackable.txt`) |
 | `item_stacks.txt` | Strongly recommended: the largest stack the game allows for each item (without it, quantities are only kept within 1–99, and the game cuts a stack that is too large in its own way) |
+| `item_collections.txt` | Recommended: the collections of *Catalog* and its type filter (without it, *Catalog* only searches) |
 | `icon.png`, `ui_icons.png`, `nonstackable.txt` | Optional: icons, extra `1/slot` rules |
 
 ### Already using ACNH-Save-Editor?
@@ -140,7 +145,7 @@ Power Pockets has its own file name and its own folder (`switch/acnh_power_pocke
 | **+** | Review pending changes, then Apply / Discard / Quit |
 | **−** | Discard all pending changes |
 | **X** | In *Catalog*: search, from any page or row |
-| **ZL, ZR** | Nothing, on purpose |
+| **ZL, ZR** | In *Catalog*: the type filter (All, Furniture, Walls/floors/rugs, Clothing, Other). Nothing elsewhere, on purpose |
 
 ### Panels
 
@@ -148,7 +153,7 @@ Power Pockets has its own file name and its own folder (`switch/acnh_power_pocke
 |---|---|
 | **Pockets** | Your 20, 30 or 40 slots, in 2, 3 or 4 columns of 10. **Y** places the item in hand in the next empty slot, or picks up the item under the cursor when your hand is empty. Menu: *Fill empty slots*, *Take in hand*, *Quantity…*, *Held quantity…*, *Enter item ID (hex)…*, *Add/Remove favorite*, *Revert to original*, *Clear slot*. |
 | **Favorites** | Two groups, each A to Z: **YOURS**, then **BUILT-IN**. **Y** takes one and jumps back to Pockets. A built-in favorite can be hidden, and comes back with *Restore default favorites*. |
-| **Catalog** | Search by name or 4-digit hex ID: **X** opens the keyboard from anywhere in the results. ★ marks your favorites. |
+| **Catalog** | Search by name or 4-digit hex ID: **X** opens the keyboard from anywhere in the results. Or, on the top row, **▶** › *Browse collections*: 113 themed lists (a Japanese traditional style, 49 furniture series, 46 HHA themes, clothing styles and themes), each A to Z. **ZL / ZR** keep only one type of item. ★ marks your favorites. |
 | **Bells & Miles** | Wallet, Bank, Nook Miles, House loan. Step with the D-pad (±1,000 / ±100,000, ×10 after holding 2 s) or type a value. A warning shows above the game's wallet limit (99,999). |
 | **Turnips** | Read-only: Daisy Mae's price, the week's prices and pattern, a graph, and the value of the turnips you carry. A banner warns when the prices are from a past week. |
 | **Loadouts** | Five saved pocket setups. Loading one is a pending change like any other. |
@@ -161,6 +166,7 @@ Power Pockets has its own file name and its own folder (`switch/acnh_power_pocke
 - **Fill every free slot:** take an item, then **A** › *Fill empty slots*.
 - **Undo one slot:** **A** › *Revert to original*. **Undo everything:** **−**.
 - **Add a favorite:** find the item in *Catalog* › **A** › *Add to favorites*.
+- **Furnish a Japanese room:** *Catalog* › **▶** › **A** › *Japanese, traditional* › **ZR** (Furniture), then **Y** on what you want.
 
 ## How your save is protected
 
@@ -195,6 +201,7 @@ All in `sdmc:/switch/acnh_power_pockets/`.
 | `nonstackable.txt` | you | Extra `1/slot` rules (optional) |
 | `item_glyphs.png`, `item_glyphs.txt` | you (install) | Item pictures, the rules that pick a picture and a color for each item, and which kinds of items never stack |
 | `item_stacks.txt` | you (install) | Largest stack of each item, from NHSE's item data (`tools/make_item_stacks.py`) |
+| `item_collections.txt` | you (install) | Catalog collections and the type of each item, from the community ACNH data spreadsheet (`tools/make_item_collections.py`) |
 | `backup_personal.dat`, `backup_main.dat` | the app | Save as it was before the last Apply |
 | `session_personal.dat`, `session_main.dat` | the app | Pre-edit backup: save as the game last wrote it, before this app's first write |
 | `session_mark.txt` | the app | Tells the app whether the pre-edit backup still matches the console (don't edit) |
@@ -261,7 +268,7 @@ The two `ui_*` scripts need SDL2 and SDL2_ttf (`brew install sdl2 sdl2_ttf`) and
 | `source/main.cpp` | Upstream save engine and the wiring to the UI |
 | `source/pp_model.*` | Testable logic: slots, pending changes, favorites, `1/slot` and picture rules, backup checks, turnip prices |
 | `source/pp_ui.*`, `source/pp_strings.h` | Panels, dialogs, every on-screen string |
-| `tools/` | Engine check, the scripts that draw the logo, icons and item pictures, and the one that builds `item_stacks.txt` from NHSE |
+| `tools/` | Engine check, the scripts that draw the logo, icons and item pictures, and the ones that build `item_stacks.txt` from NHSE and `item_collections.txt` from the community spreadsheet |
 | `docs/design/` | Visual design system, item pictures, HTML mockups |
 | `docs/ux/UX_SPEC.md` | Interaction spec |
 | `docs/engine/AUDIT_ECRITURE.md` | Read-only audit of the save-writing code |
@@ -303,10 +310,11 @@ Pull requests are welcome for the interface, tests and docs. Changes to the save
 
 MIT. See [LICENSE](LICENSE). Copyright cbreezy210 (upstream) and the Power Pockets contributors.
 
-Three shipped data files keep their own license (details in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md), texts in [`licenses/`](licenses)): `items.txt` and `item_stacks.txt`, item data from NHSE (GPL-3.0), and `font.ttf`, the Varela Round font (SIL OFL 1.1).
+Four shipped data files keep their own license (details in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md), texts in [`licenses/`](licenses)): `items.txt` and `item_stacks.txt`, item data from NHSE (GPL-3.0), `item_collections.txt`, from Norviah's JSON of the community spreadsheet (MIT), and `font.ttf`, the Varela Round font (SIL OFL 1.1).
 
 - **cbreezy210** — [ACNH-Save-Editor](https://github.com/cbreezy210/ACNH-Save-Editor), the save engine this project runs on.
 - **kwsch and [NHSE](https://github.com/kwsch/NHSE)** — the ACNH save-format research everything here relies on, the item names table (`items.txt`) and the item kinds and stack limits behind `item_stacks.txt` (GPL-3.0).
+- **The [Animal Crossing: New Horizons data spreadsheet](https://docs.google.com/spreadsheets/d/1mo7myqHry5r_TKvakvIhHbcEAEQpSiNoNQoIS8sMpvM) community and Norviah's [animal-crossing](https://github.com/Norviah/animal-crossing) JSON (MIT)** — the series, themes, styles and tags behind the Catalog collections (`item_collections.txt`).
 - **averne and [Turnips](https://github.com/averne/Turnips)** — the turnip prices previewer that inspired the Turnips panel, and the location of the save date. No code was taken from it.
 - **[devkitPro](https://devkitpro.org) / libnx**, **SDL2**, **SDL_ttf**, **stb_image**.
 - **Varela Round** font by The Varela Round Project Authors (SIL Open Font License 1.1).

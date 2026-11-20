@@ -17,7 +17,7 @@ $CXX $FLAGS -O1 -g -fsanitize=address,undefined \
 if python3 -c "import PIL" 2>/dev/null && python3 "$ROOT/tools/make_item_glyphs.py" --dump "$OUT/glyph_dump.txt"; then
     export PP_ROOT="$ROOT" PP_GLYPH_DUMP="$OUT/glyph_dump.txt"
 fi
-PP_TMP="$OUT" "$OUT/test_model"
+PP_TMP="$OUT" PP_ASSETS="$ROOT/assets" "$OUT/test_model"
 
 echo
 echo "== syntax check against libnx / SDL2 stubs =="

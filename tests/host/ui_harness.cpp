@@ -70,6 +70,7 @@ int main(int argc, char** argv) {
     copy(root + "/assets/item_glyphs.png", sd + "item_glyphs.png");
     copy(root + "/assets/item_glyphs.txt", sd + "item_glyphs.txt");
     copy(root + "/assets/item_stacks.txt", sd + "item_stacks.txt");
+    copy(root + "/assets/item_collections.txt", sd + "item_collections.txt");
 
     // items.txt, exactly like main.cpp loads it
     std::vector<Item> items;
@@ -94,6 +95,8 @@ int main(int argc, char** argv) {
     CHECK(glyphs.loaded() && glyphs.glyphOf(idOf(items, "golden axe")) != 0);
     CHECK(stack.isSingle(idOf(items, "golden axe")) && stack.isSingle(idOf(items, "star wand")));
     CHECK(!stack.isSingle(idOf(items, "Nook Miles Ticket")));
+    ItemCollections cols;
+    CHECK(cols.load((sd + "item_collections.txt").c_str(), items) && cols.count() == 113);
 
     // Fake save: pockets + money
     uint8_t pockets[POCKETS_BYTES];
@@ -118,6 +121,7 @@ int main(int argc, char** argv) {
 
     EngineHooks h;
     h.pockets = pockets; h.vals = vals; h.items = &items; h.favorites = &favs; h.stack = &stack; h.limits = &limits; h.glyphs = &glyphs;
+    h.collections = &cols;
     h.saveReady = true; h.editSupported = true; h.loadoutNames = LOADOUT_NAMES; h.loadoutCount = 5;
     h.sdDir = sd; h.version = "1.2.0 (harness)";
     h.apply = [&]() {
@@ -411,6 +415,80 @@ int main(int argc, char** argv) {
         CHECK(memcmp(keep, bag, sizeof keep) == 0 && memcmp(pk3, pockets, sizeof pk3) == 0);
         u3.shutdown();
         remove((sd + "l_1.dat").c_str());
+    }
+
+    // ---------------- Catalog collections and the ZL / ZR type filter ----------------
+    {
+        uint8_t pk[POCKETS_BYTES]; for (int s2 = 1; s2 <= 20; s2++) put(pk, s2, ID_EMPTY, 0);
+        uint32_t vv[4] = { 100, 200, 300, 400 };
+        EngineHooks x = h;
+        x.pockets = pk; x.vals = vv;
+        Ui u; u.init(ren, sd); u.start(x); idle(u);
+        const Collection& jp = cols.groups()[0].list[0];
+        CHECK(jp.name == "Japanese, traditional");
+        auto inJp = [&](uint16_t i) { for (size_t k = 0; k < jp.ids.size(); k++) if (jp.ids[k] == i) return true; return false; };
+        // Y takes the focused result (back to Pockets), Y again drops it in the next empty slot;
+        // that slot is then emptied again, and R R goes back to the Catalog.
+        auto takeFocused = [&]() -> uint16_t {
+            press(u, Y); idle(u); press(u, Y); idle(u);
+            uint16_t got = ID_EMPTY;
+            for (int s2 = 1; s2 <= 20; s2++)
+                if (readSlot(pk, s2).id != ID_EMPTY) { got = readSlot(pk, s2).id; put(pk, s2, ID_EMPTY, 0); }
+            idle(u);
+            press(u, R, 2); idle(u);
+            return got;
+        };
+        const int k0 = kbCalls;
+        press(u, R, 2); press(u, RIGHT); idle(u);                  // row 0: from the search field to the collection box
+        shot("catalog-collection-box");
+        press(u, A); idle(u);
+        CHECK(kbCalls == k0);                                      // A on the box opens the list, not the keyboard
+        shot("catalog-collections");
+        press(u, RIGHT); idle(u);
+        shot("catalog-collections-page2");
+        press(u, LEFT); press(u, B); idle(u);                      // B: back to the Catalog, nothing chosen
+        press(u, A); press(u, A); idle(u);                         // list again, A on the first entry: Japanese, traditional
+        shot("catalog-japanese");
+        const std::vector<int> jpAz = collectionItems(jp, items);
+        uint16_t t = takeFocused();
+        CHECK(t == jpAz[0] && inJp(t));                            // A-Z: the first item of the collection
+        press(u, ZR); idle(u);                                     // All -> Furniture
+        shot("catalog-japanese-furniture");
+        t = takeFocused();
+        CHECK(inJp(t) && cols.typeOf(t) == IT_FURNITURE);
+        press(u, ZR, 2); idle(u);                                  // -> Walls, floors & rugs -> Clothing
+        shot("catalog-japanese-clothing");
+        t = takeFocused();
+        CHECK(inJp(t) && cols.typeOf(t) == IT_CLOTHING);
+        press(u, ZR); idle(u);                                     // -> Other
+        std::vector<int> jpOther = filterByType(jpAz, cols, TF_OTHER);
+        if (jpOther.empty()) shot("catalog-filter-empty");
+        else { t = takeFocused(); CHECK(inJp(t) && cols.typeOf(t) == IT_OTHER); }
+        press(u, ZR); idle(u);                                     // -> All (wraps)
+        keyboard.push_back("golden");
+        press(u, X); idle(u);                                      // a search replaces the collection
+        CHECK(kbCalls == k0 + 1);
+        shot("catalog-search-after-collection");
+        t = takeFocused();
+        CHECK(t < items.size() && items[t].name.find("golden") != std::string::npos);
+        press(u, ZL); idle(u);                                     // All -> Other (wraps back)
+        shot("catalog-search-other");
+        t = takeFocused();
+        CHECK(t < items.size() && items[t].name.find("golden") != std::string::npos && cols.typeOf(t) == IT_OTHER);
+        CHECK(applyCalls == 1 && restoreCalls == 1);               // nothing written by any of this
+        u.shutdown();
+
+        // Without item_collections.txt: the box says so, A and ZL / ZR only show a toast.
+        ItemCollections none;
+        EngineHooks z = h;
+        uint8_t pk2[POCKETS_BYTES]; memcpy(pk2, pk, sizeof pk2);
+        z.pockets = pk2; z.vals = vv; z.collections = &none;
+        Ui un; un.init(ren, sd); un.start(z); idle(un);
+        press(un, R, 2); press(un, RIGHT); press(un, A); idle(un);
+        shot("catalog-no-collections");
+        press(un, ZR); press(un, ZL); press(un, Y); idle(un);
+        CHECK(memcmp(pk2, pk, sizeof pk2) == 0 && kbCalls == k0 + 1);
+        un.shutdown();
     }
 
     // ---------------- Fault injection: every engine hook can fail ----------------

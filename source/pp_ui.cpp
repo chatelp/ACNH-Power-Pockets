@@ -147,7 +147,13 @@ struct Ui::Impl {
     bool backupTrusted = true, tainted = false, sessionWritten = false, quit = false;
     bool armed = false;                   // false until the buttons held at launch are released
     std::string query;
-    std::vector<int> results;
+    std::vector<int> catAll;              // Catalog source: search results or a collection, A-Z
+    std::vector<int> results;             // catAll through the ZL / ZR type filter (what the list shows)
+    int  typeFilter = TF_ALL;
+    int  collG = -1, collC = -1;          // the collection shown, -1 = none (search results)
+    bool catCol = false;                  // row 0: the collection box has the cursor (else the search field)
+    bool browsing = false;                // the collection list replaces the Catalog list
+    int  browseFocus = 0;
     LoadoutInfo lo[8];
     InfoData info;
     bool infoValid = false;
@@ -722,16 +728,21 @@ struct Ui::Impl {
         return out;
     }
     struct FavRow { int item; bool cont; };                         // item < 0: header of the next item's group
-    std::vector<std::vector<FavRow> > favPages(const std::vector<Fav>& L) const {
+    // Pages of a list split in groups: `sameGroup(i)` tells whether item i is in the group of item i - 1.
+    template <class SameGroup>
+    static std::vector<std::vector<FavRow> > groupedPages(int n, SameGroup sameGroup) {
         std::vector<std::vector<FavRow> > pages(1);
-        for (int i = 0; i < (int)L.size(); i++) {
-            const bool groupStart = i == 0 || L[i].builtin != L[i - 1].builtin;
+        for (int i = 0; i < n; i++) {
+            const bool groupStart = i == 0 || !sameGroup(i);
             // A header and its first item stay together: both need room on the page.
             if ((int)pages.back().size() + (groupStart ? 2 : 1) > ROWS) pages.push_back(std::vector<FavRow>());
             if (groupStart || pages.back().empty()) pages.back().push_back({ -1, !groupStart });
             pages.back().push_back({ i, false });
         }
         return pages;
+    }
+    std::vector<std::vector<FavRow> > favPages(const std::vector<Fav>& L) const {
+        return groupedPages((int)L.size(), [&L](int i) { return L[i].builtin == L[i - 1].builtin; });
     }
     // Page and row of a favorite in that layout.
     static bool favLocate(const std::vector<std::vector<FavRow> >& pages, int item, int& page, int& row) {
@@ -815,21 +826,64 @@ struct Ui::Impl {
     }
 
     // -------------------------------- Catalog ------------------------------
+    // Row 0 holds two boxes: the search field and, on its right, the collection picker
+    // (left / right move between them). The rows below are the results: a search or the
+    // items of a collection (item_collections.txt), both narrowed by the ZL / ZR type filter.
     static const int CAT_ROWS = ROWS - 1;                      // row 0 is the search field
+    static const int SEARCH_W = 600;
+    bool collectionsOn() const {
+        return e->collections && e->collections->loaded() && e->collections->count() > 0 && itemsLoaded();
+    }
+    const Collection* activeCollection() const {
+        if (!collectionsOn() || collG < 0) return nullptr;
+        const std::vector<CollectionGroup>& G = e->collections->groups();
+        if (collG >= (int)G.size() || collC < 0 || collC >= (int)G[collG].list.size()) return nullptr;
+        return &G[collG].list[collC];
+    }
+    // Applies the type filter to the current source. `fresh`: a new list, cursor on its first
+    // item; otherwise the cursor stays on row 0, or on the same item when it is still shown.
+    void refilter(bool fresh) {
+        int& f = focus[P_CATALOG];
+        const int keep = (!fresh && f > 0 && f <= (int)results.size()) ? results[f - 1] : -1;
+        const bool onRow0 = !fresh && f == 0;
+        results = collectionsOn() ? filterByType(catAll, *e->collections, typeFilter) : catAll;
+        dirty = true;
+        if (onRow0) return;
+        f = results.empty() ? 0 : 1;
+        for (size_t i = 0; keep >= 0 && i < results.size(); i++) if (results[i] == keep) { f = (int)i + 1; break; }
+    }
     void drawCatalog() {
+        if (browsing && collectionsOn()) { drawBrowse(); return; }
+        const Collection* col = activeCollection();
+        const int nAll = (int)catAll.size();
         if (!degradedBanner()) {
-            if (query.empty()) contextBanner(S::SEARCH_EMPTY);
-            else contextBanner(fmt(S::CTX_RESULTS_FMT, (int)results.size(), plural((int)results.size()), query.c_str()));
+            std::string left;
+            if (col) left = fmt(S::COLL_RESULTS_FMT, col->name.c_str(), nAll, plural(nAll));
+            else if (query.empty()) left = S::SEARCH_EMPTY;
+            else left = fmt(S::CTX_RESULTS_FMT, nAll, plural(nAll), query.c_str());
+            if (typeFilter != TF_ALL && nAll > 0) left += fmt(S::FILTER_OF_FMT, (int)results.size());
+            contextBanner(fit(fSmall, left, 860), collectionsOn() ? fmt(S::FILTER_FMT, S::FILTER_NAME[typeFilter]) : std::string());
         }
         int f = focus[P_CATALOG];
-        SDL_Rect sr = { LIST_X, LIST_Y, LIST_W, ROW_H };
+        const bool sf = f == 0 && !catCol, cf = f == 0 && catCol;
+        SDL_Rect sr = { LIST_X, LIST_Y, SEARCH_W, ROW_H };
         fillRound(sr, 4, C::sunken);
-        frameRect(sr, f == 0 ? 3 : 2, f == 0 ? C::selectBg : C::wood);
+        frameRect(sr, sf ? 3 : 2, sf ? C::selectBg : C::wood);
         textMid(fSmall, S::SEARCH_LABEL, C::textSecond, sr.x + 24, sr);
-        textMid(fBody, fit(fBody, query, 800), C::textPrimary, sr.x + 104, sr);
-        textR(fSmall, f == 0 ? S::SEARCH_HINT : S::SEARCH_HINT_X, C::textSecond, sr.x + sr.w - 20, sr.y + (ROW_H - fontH(fSmall)) / 2);
+        int hw = textR(fSmall, sf ? S::SEARCH_HINT : S::SEARCH_HINT_X, C::textSecond, sr.x + sr.w - 20, sr.y + (ROW_H - fontH(fSmall)) / 2);
+        textMid(fBody, fit(fBody, query, sr.w - 104 - hw - 36), C::textPrimary, sr.x + 104, sr);
+        SDL_Rect cr = { LIST_X + SEARCH_W + 16, LIST_Y, LIST_W - SEARCH_W - 16, ROW_H };
+        fillRound(cr, 4, cf ? C::selectBg : C::panelAlt);
+        if (!cf) frameRect(cr, 2, C::wood);
+        SDL_Color ci = cf ? C::selectInk : (collectionsOn() ? C::textPrimary : C::textSecond);
+        int aw = textR(fBody, "\xC2\xBB", ci, cr.x + cr.w - 20, cr.y + (ROW_H - fontH(fBody)) / 2);
+        int cx = cr.x + 20;
+        if (col) cx += textMid(fSmall, S::COLL_LABEL, cf ? C::selectInk : C::textSecond, cx, cr) + 12;
+        std::string cl = !collectionsOn() ? std::string(S::COLL_MISSING) : (col ? col->name : std::string(S::COLL_BROWSE));
+        textMid(fBody, fit(fBody, cl, cr.x + cr.w - 20 - aw - 12 - cx), ci, cx, cr);
         if (!itemsLoaded()) return;
-        if (!query.empty() && results.empty()) { emptyState(fmt(S::SEARCH_NONE_FMT, query.c_str()), S::SEARCH_EMPTY); return; }
+        if (!query.empty() && catAll.empty()) { emptyState(fmt(S::SEARCH_NONE_FMT, query.c_str()), S::SEARCH_EMPTY); return; }
+        if (nAll > 0 && results.empty()) { emptyState(fmt(S::FILTER_NONE_FMT, S::FILTER_NAME[typeFilter]), S::FILTER_NONE_HINT); return; }
         int sel = f - 1;
         int page = sel >= 0 ? sel / CAT_ROWS : 0;
         int pages = ((int)results.size() + CAT_ROWS - 1) / CAT_ROWS;
@@ -842,20 +896,117 @@ struct Ui::Impl {
         std::string q = e->keyboard(S::KB_SEARCH, query.c_str());
         if (q == query) return;                                  // cancelled or unchanged: keep the list and the cursor
         query = q;
-        results = searchItems(items(), query);
-        focus[P_CATALOG] = results.empty() ? 0 : 1;
+        collG = collC = -1;
+        catAll = searchItems(items(), query);
+        refilter(true);
+    }
+    // ---- Collection list (Catalog > Browse collections) ----
+    struct CollRef { int g, c; };
+    std::vector<CollRef> collFlat() const {
+        std::vector<CollRef> out;
+        if (!collectionsOn()) return out;
+        const std::vector<CollectionGroup>& G = e->collections->groups();
+        for (size_t g = 0; g < G.size(); g++)
+            for (size_t c = 0; c < G[g].list.size(); c++) out.push_back({ (int)g, (int)c });
+        return out;
+    }
+    std::vector<std::vector<FavRow> > collPages(const std::vector<CollRef>& L) const {
+        return groupedPages((int)L.size(), [&L](int i) { return L[i].g == L[i - 1].g; });
+    }
+    static std::string upper(const std::string& s) {
+        std::string o = s;
+        for (size_t i = 0; i < o.size(); i++) if (o[i] >= 'a' && o[i] <= 'z') o[i] = (char)(o[i] - 'a' + 'A');
+        return o;
+    }
+    void openBrowse() {
+        if (!itemsLoaded()) return;
+        if (!collectionsOn()) { setToast(T_WARN, S::T_COLL_MISSING); return; }
+        const std::vector<CollRef> L = collFlat();
+        for (size_t i = 0; i < L.size(); i++) if (L[i].g == collG && L[i].c == collC) browseFocus = (int)i;
+        browsing = true;
         dirty = true;
     }
+    void openCollection(int g, int c) {
+        collG = g; collC = c;
+        query.clear();
+        catAll = collectionItems(e->collections->groups()[g].list[c], items());
+        browsing = false;
+        refilter(true);
+    }
+    void drawBrowse() {
+        const std::vector<CollRef> L = collFlat();
+        const std::vector<CollectionGroup>& G = e->collections->groups();
+        contextBanner(fmt(S::COLL_CTX_FMT, (int)L.size()), S::COLL_CREDIT);
+        const int f = std::max(0, std::min(browseFocus, (int)L.size() - 1));
+        const std::vector<std::vector<FavRow> > pages = collPages(L);
+        int page = 0, row = 0;
+        favLocate(pages, f, page, row);
+        for (size_t r = 0; r < pages[page].size(); r++) {
+            const FavRow& fr = pages[page][r];
+            const int y = LIST_Y + (int)r * ROW_PITCH;
+            if (fr.item < 0) {                                     // a header is always followed by an item
+                const CollectionGroup& g = G[L[pages[page][r + 1].item].g];
+                fillRound({ LIST_X, y + 4, LIST_W, 32 }, 4, C::panelAlt);
+                std::string label = fmt("%s \xC2\xB7 %d", upper(g.name).c_str(), (int)g.list.size());
+                if (fr.cont) label += S::COLL_GROUP_CONT;
+                text(fSmall, label, C::textSecond, LIST_X + 16, y + 4 + (32 - fontH(fSmall)) / 2);
+                continue;
+            }
+            const Collection& c = G[L[fr.item].g].list[L[fr.item].c];
+            const bool foc = fr.item == f;
+            SDL_Rect rr = listRow((int)r, foc, false, false);
+            const int n = (int)c.ids.size();
+            int cw = textR(fSmall, fmt(S::COLL_COUNT_FMT, n, plural(n)), foc ? C::selectInk : C::textSecond, rr.x + rr.w - 20, rr.y + (ROW_H - fontH(fSmall)) / 2);
+            textMid(fBody, fit(fBody, c.name, rr.w - 56 - cw - 40), foc ? C::selectInk : C::textPrimary, rr.x + 32, rr);
+        }
+        pager(page, (int)pages.size());
+    }
+    void browseInput(uint64_t down, uint64_t nav) {
+        const std::vector<CollRef> L = collFlat();
+        const int n = (int)L.size();
+        if (n == 0 || (down & HidNpadButton_B)) { browsing = false; dirty = true; return; }
+        int& f = browseFocus;
+        if (f >= n) f = n - 1;
+        if (nav & HidNpadButton_AnyUp) { f = (f + n - 1) % n; dirty = true; }
+        if (nav & HidNpadButton_AnyDown) { f = (f + 1) % n; dirty = true; }
+        if (nav & (HidNpadButton_AnyLeft | HidNpadButton_AnyRight)) {   // previous / next page
+            const std::vector<std::vector<FavRow> > pages = collPages(L);
+            int page = 0, row = 0;
+            favLocate(pages, f, page, row);
+            const int to = page + ((nav & HidNpadButton_AnyRight) ? 1 : -1);
+            if (to >= 0 && to < (int)pages.size())
+                for (size_t r = 0; r < pages[to].size(); r++) if (pages[to][r].item >= 0) { f = pages[to][r].item; break; }
+            dirty = true;
+        }
+        if (down & HidNpadButton_A) openCollection(L[f].g, L[f].c);
+    }
     void catalogInput(uint64_t down, uint64_t nav) {
+        if (browsing) {
+            if (collectionsOn()) { browseInput(down, nav); return; }
+            browsing = false;
+        }
         int& f = focus[P_CATALOG];
+        if (down & (HidNpadButton_ZL | HidNpadButton_ZR)) {     // type filter: ZR next, ZL previous
+            if (!itemsLoaded()) return;
+            if (!collectionsOn()) { setToast(T_WARN, S::T_COLL_MISSING); return; }
+            typeFilter = (typeFilter + ((down & HidNpadButton_ZR) ? 1 : TF_COUNT - 1)) % TF_COUNT;
+            refilter(false);
+            return;
+        }
         int n = 1 + (int)results.size();
         if (nav & HidNpadButton_AnyUp) { f = (f + n - 1) % n; dirty = true; }
         if (nav & HidNpadButton_AnyDown) { f = (f + 1) % n; dirty = true; }
-        if ((nav & HidNpadButton_AnyRight) && f > 0) { f = std::min(n - 1, f + CAT_ROWS); dirty = true; }
-        if ((nav & HidNpadButton_AnyLeft) && f > 0) { f = std::max(1, f - CAT_ROWS); dirty = true; }
+        if (f == 0 && (nav & HidNpadButton_AnyRight)) { catCol = true; dirty = true; }
+        else if (f == 0 && (nav & HidNpadButton_AnyLeft)) { catCol = false; dirty = true; }
+        else if ((nav & HidNpadButton_AnyRight) && f > 0) { f = std::min(n - 1, f + CAT_ROWS); dirty = true; }
+        else if ((nav & HidNpadButton_AnyLeft) && f > 0) { f = std::max(1, f - CAT_ROWS); dirty = true; }
         if (down & HidNpadButton_X) { if (itemsLoaded()) runSearch(); return; }   // search from any page or row
         if (!(down & (HidNpadButton_A | HidNpadButton_Y))) return;
-        if (f == 0) { if (itemsLoaded()) runSearch(); return; }
+        if (f == 0) {
+            if (catCol) openBrowse();
+            else if (itemsLoaded()) runSearch();
+            return;
+        }
         uint16_t id = (uint16_t)results[f - 1];
         if (down & HidNpadButton_Y) setHand(id, hand.valid ? hand.qty : 1, true);
         else takeMenu(id, false);
@@ -1739,7 +1890,15 @@ struct Ui::Impl {
                 break;
             }
             case P_CATALOG:
-                if (focus[P_CATALOG] > 0 && focus[P_CATALOG] <= (int)results.size()) {
+                if (browsing && collectionsOn()) {
+                    const std::vector<CollRef> L = collFlat();
+                    if (!L.empty()) {
+                        const CollRef& r = L[std::max(0, std::min(browseFocus, (int)L.size() - 1))];
+                        const CollectionGroup& g = e->collections->groups()[r.g];
+                        const int n = (int)g.list[r.c].ids.size();
+                        d = g.name + S::DOT + g.list[r.c].name + S::DOT + fmt(S::COLL_COUNT_FMT, n, plural(n));
+                    }
+                } else if (focus[P_CATALOG] > 0 && focus[P_CATALOG] <= (int)results.size()) {
                     uint16_t id = (uint16_t)results[focus[P_CATALOG] - 1];
                     d = itemName(id) + S::DOT + fmt("0x%04X", (unsigned)id);
                     std::string n = stackNote(id);
@@ -1779,13 +1938,18 @@ struct Ui::Impl {
         } else if (top && top->kind == Modal::REVIEW) {
             left.push_back({ "A", true, S::H_CHOOSE, false, false });
             left.push_back({ "B", true, S::H_BACK, false, false });
+        } else if (panel == P_CATALOG && browsing && collectionsOn()) {
+            left.push_back({ "A", true, S::H_OPEN, false, false });
+            left.push_back({ "B", true, S::H_BACK, false, false });
+            right.push_back({ "L", false, "", false, false });
+            right.push_back({ "R", false, S::H_PANEL, false, false });
         } else {
             std::string y;
             bool yOff = false;
             switch (panel) {
                 case P_POCKETS: y = hand.valid ? S::H_PLACE : S::H_TAKE; yOff = !hand.valid && slotEmpty(e->pockets, focus[P_POCKETS] + 1); break;
                 case P_FAVS: y = S::H_TAKE; yOff = e->favorites->list().empty(); break;
-                case P_CATALOG: y = focus[P_CATALOG] == 0 ? S::H_TYPE : S::H_TAKE; yOff = !itemsLoaded(); break;
+                case P_CATALOG: y = focus[P_CATALOG] == 0 ? (catCol ? S::H_OPEN : S::H_TYPE) : S::H_TAKE; yOff = !itemsLoaded(); break;
                 case P_MONEY: y = S::H_MODIFY; break;
                 case P_TURNIPS: y = "\xE2\x80\x94"; yOff = true; break;
                 case P_LOADOUTS: y = S::H_LOAD; yOff = !lo[focus[P_LOADOUTS]].exists; break;
@@ -1794,7 +1958,11 @@ struct Ui::Impl {
             left.push_back({ "A", true, S::H_ACTIONS, panel == P_TURNIPS, false });
             left.push_back({ "Y", true, y, yOff, false });
             left.push_back({ "B", true, S::H_BACK, true, false });
-            if (panel == P_CATALOG) left.push_back({ "X", true, S::H_SEARCH, !itemsLoaded(), false });
+            if (panel == P_CATALOG) {
+                left.push_back({ "X", true, S::H_SEARCH, !itemsLoaded(), false });
+                left.push_back({ "ZL", false, "", !collectionsOn(), false });
+                left.push_back({ "ZR", false, S::H_FILTER, !collectionsOn(), false });
+            }
             int n = pending();
             right.push_back({ "L", false, "", false, false });
             right.push_back({ "R", false, S::H_PANEL, false, false });
@@ -1925,7 +2093,8 @@ struct Ui::Impl {
         if (down & HidNpadButton_R) { panel = (panel + 1) % P_COUNT; onPanelEnter(); return; }
         if (down & HidNpadButton_Plus) { openReview(); return; }
         if (down & HidNpadButton_Minus) { askDiscard(); return; }
-        // ZL / ZR / X: intentionally no action (upstream ZL = instant restore, ZR = Doctor).
+        // ZL / ZR / X: no action outside the Catalog (upstream ZL = instant restore, ZR = Doctor);
+        // in the Catalog, X searches and ZL / ZR change the type filter.
         switch (panel) {
             case P_POCKETS: pocketsInput(down, nav); break;
             case P_FAVS: favsInput(down, nav); break;

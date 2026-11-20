@@ -32,6 +32,8 @@ static const char* const H_PLACE   = "Place + next";
 static const char* const H_TAKE    = "Take";
 static const char* const H_TYPE    = "Type";
 static const char* const H_SEARCH  = "Search";
+static const char* const H_OPEN    = "Open";
+static const char* const H_FILTER  = "Type";
 static const char* const H_MODIFY  = "Modify";
 static const char* const H_LOAD    = "Load";
 static const char* const H_HOLD_A  = "Hold to confirm";
@@ -111,6 +113,21 @@ static const char* const SEARCH_HINT_X    = "X to search";         // cursor on 
 static const char* const SEARCH_EMPTY     = "Type part of a name (e.g. \"star\") or a hex ID.";
 static const char* const SEARCH_NONE_FMT  = "No item contains \"%s\".";
 static const char* const KB_SEARCH        = "Search items (e.g. star, or 16DB)";
+// Catalog collections (item_collections.txt) and the ZL / ZR type filter
+static const char* const COLL_BROWSE      = "Browse collections";
+static const char* const COLL_LABEL       = "Collection";
+static const char* const COLL_MISSING     = "No collections";
+static const char* const COLL_CTX_FMT     = "%d collections \xC2\xB7 A opens one \xC2\xB7 B goes back";
+static const char* const COLL_CREDIT      = "Data: community ACNH spreadsheet";
+static const char* const COLL_COUNT_FMT   = "%d item%s";
+static const char* const COLL_RESULTS_FMT = "%s \xC2\xB7 %d item%s";
+static const char* const COLL_GROUP_CONT  = " (cont.)";
+static const char* const FILTER_FMT       = "Type: %s";
+static const char* const FILTER_OF_FMT    = " \xC2\xB7 %d shown";
+static const char* const FILTER_NAME[]    = { "All", "Furniture", "Walls, floors & rugs", "Clothing", "Other" };
+static const char* const FILTER_NONE_FMT  = "Nothing of type \"%s\" here.";
+static const char* const FILTER_NONE_HINT = "ZL / ZR changes the type filter.";
+static const char* const T_COLL_MISSING   = "item_collections.txt is missing: copy it next to items.txt";
 static const char* const CTX_RESULTS_FMT  = "%d result%s for \"%s\"";
 
 // Bells & Miles

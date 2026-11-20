@@ -61,7 +61,7 @@ int main(int argc, char** argv) {
     const std::string root = argv[1];
     g_out = argv[2];
     const std::string sd = g_out + "/sd/";
-    const char* assets[] = { "font.ttf", "icon.png", "ui_icons.png", "nonstackable.txt", "item_glyphs.png", "item_glyphs.txt", "item_stacks.txt" };
+    const char* assets[] = { "font.ttf", "icon.png", "ui_icons.png", "nonstackable.txt", "item_glyphs.png", "item_glyphs.txt", "item_stacks.txt", "item_collections.txt" };
     for (const char* a : assets) copyFile((root + "/assets/" + a).c_str(), (sd + a).c_str());
 
     std::vector<Item> items;
@@ -82,6 +82,7 @@ int main(int argc, char** argv) {
     glyphs.build(items, (sd + "item_glyphs.txt").c_str());
     StackLimits limits; limits.load((sd + "item_stacks.txt").c_str(), items.size());
     stack.build(items, (sd + "nonstackable.txt").c_str(), &glyphs, &limits);
+    ItemCollections cols; cols.load((sd + "item_collections.txt").c_str(), items);
 
     // The "console" pockets: a bit of everything, five free slots.
     uint8_t pockets[POCKETS_BYTES]; clearAll(pockets);
@@ -110,6 +111,7 @@ int main(int argc, char** argv) {
     std::deque<std::string> keyboard;
     EngineHooks h;
     h.pockets = pockets; h.vals = vals; h.items = &items; h.favorites = &favs; h.stack = &stack; h.limits = &limits; h.glyphs = &glyphs;
+    h.collections = &cols;
     h.saveReady = true; h.editSupported = true; h.loadoutNames = LOADOUT_NAMES; h.loadoutCount = 5;
     h.sdDir = sd; h.version = "1.2.0";
     h.apply = [&]() { applied = true; return ER_OK; };
@@ -145,7 +147,7 @@ int main(int argc, char** argv) {
 
     const uint64_t A = HidNpadButton_A, B = HidNpadButton_B, Y = HidNpadButton_Y, R = HidNpadButton_R, L = HidNpadButton_L,
                    UP = HidNpadButton_Up, DOWN = HidNpadButton_Down, LEFT = HidNpadButton_Left, RIGHT = HidNpadButton_Right,
-                   PLUS = HidNpadButton_Plus;
+                   PLUS = HidNpadButton_Plus, ZL = HidNpadButton_ZL, ZR = HidNpadButton_ZR;
 
     // Favorites: YOURS then BUILT-IN.
     press(ui, R); idle(ui);
@@ -174,6 +176,12 @@ int main(int argc, char** argv) {
     press(ui, A); idle(ui);
     press(ui, DOWN, 2); idle(ui);
     shot("catalog");
+
+    // Catalog collections: the Japanese traditional style, furniture only.
+    press(ui, UP, 3); press(ui, RIGHT); press(ui, A); idle(ui);   // row 0, collection box, the list
+    press(ui, A); press(ui, ZR); press(ui, DOWN, 2); idle(ui);    // Japanese, traditional > Furniture
+    shot("collections");
+    press(ui, ZL); idle(ui);
 
     // Bells & Miles: one value already changed, the number editor open on another.
     press(ui, R); idle(ui);

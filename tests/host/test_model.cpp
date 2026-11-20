@@ -523,6 +523,112 @@ static void testFuzzParsers() {
     CHECK(g.ignoredLines() == 0 && g.list().size() == f.list().size() && g.isFav(2) && g.isFav(3) && !g.isFav(4));
 }
 
+static void testCollections() {
+    printf("item collections and type filter\n");
+    std::vector<Item> items = makeItems();          // 0 has no name; 1 golden axe, 2 Nook Miles Ticket, ...
+    ItemCollections c;
+    c.reset(items.size());
+    CHECK(c.applyLine("# comment") && c.applyLine("   "));
+    CHECK(!c.applyLine("0001"));                     // ids before any collection or type
+    CHECK(!c.applyLine("collection Orphan"));        // a collection needs a group
+    CHECK(c.applyLine("group Styles"));
+    CHECK(c.applyLine("collection Shiny things"));
+    CHECK(c.applyLine("  0004 0001-0002 0000 0001")); // unnamed 0 and the duplicate 1 are dropped by finish()
+    CHECK(!c.applyLine("  0005 zz"));                // one bad token: the whole line is ignored
+    CHECK(!c.applyLine("  0007-0005"));              // reversed range
+    CHECK(c.applyLine("collection Ghosts"));
+    CHECK(c.applyLine("  FFF0"));                    // beyond items.txt: dropped, the collection with it
+    CHECK(c.applyLine("group Empty"));
+    CHECK(!c.applyLine("type shoes"));
+    CHECK(c.applyLine("type furniture") && c.applyLine("0004-0005"));
+    CHECK(c.applyLine("type clothing") && c.applyLine("0002 FFF0"));
+    CHECK(c.applyLine("type surfaces") && c.applyLine("0007"));
+    CHECK(!c.applyLine("0005 zz"));
+    c.finish(items);
+    CHECK(c.groups().size() == 1 && c.count() == 1);
+    CHECK(c.groups()[0].name == "Styles" && c.groups()[0].list[0].name == "Shiny things");
+    CHECK(c.groups()[0].list[0].ids.size() == 3);
+    CHECK(c.typeOf(4) == IT_FURNITURE && c.typeOf(5) == IT_FURNITURE && c.typeOf(2) == IT_CLOTHING);
+    CHECK(c.typeOf(7) == IT_SURFACES && c.typeOf(1) == IT_OTHER && c.typeOf(0xFFF0) == IT_OTHER && c.typed() == 4);
+    std::vector<int> col = collectionItems(c.groups()[0].list[0], items);
+    CHECK(col.size() == 3 && col[0] == 4 && col[1] == 1 && col[2] == 2);   // gold roses, golden axe, Nook Miles Ticket
+    CHECK(filterByType(col, c, TF_ALL) == col);
+    std::vector<int> fu = filterByType(col, c, TF_FURNITURE);
+    CHECK(fu.size() == 1 && fu[0] == 4);
+    std::vector<int> ot = filterByType(col, c, TF_OTHER);
+    CHECK(ot.size() == 1 && ot[0] == 1);                                   // untyped counts as other
+    CHECK(filterByType(col, c, TF_SURFACES).empty() && filterByType(col, c, TF_CLOTHING).size() == 1);
+    CHECK(!c.loaded());                              // only load() marks the table loaded
+
+    // Missing file: nothing, never loaded.
+    ItemCollections m;
+    CHECK(!m.load(path("no_such_collections.txt").c_str(), items) && !m.loaded() && m.count() == 0);
+    // A file without a final newline, CRLF lines.
+    writeText(path("coll.txt"), "group G\r\ncollection C\r\n0001 0003");
+    ItemCollections f;
+    CHECK(f.load(path("coll.txt").c_str(), items) && f.loaded() && f.count() == 1 && f.ignoredLines() == 0);
+    CHECK(f.groups()[0].list[0].ids.size() == 2);
+
+    // Fuzz: random bytes never crash and keep every id named.
+    for (int round = 0; round < 300; round++) {
+        std::string d;
+        static const char* parts[] = { "group ", "collection ", "type furniture\n", "type x\n", "0001", "-", "000D", " ", "\n", "FFFF", "zz", "#", "\r\n", "0" };
+        int n = (int)(rnd() % 40);
+        for (int k = 0; k < n; k++) d += (rnd() % 5) ? parts[rnd() % 14] : std::string(1, (char)(rnd() & 0xFF));
+        writeBytes(path("coll_fuzz.txt"), d);
+        ItemCollections z;
+        z.load(path("coll_fuzz.txt").c_str(), items);
+        bool ok = true;
+        for (size_t g = 0; g < z.groups().size(); g++) {
+            ok = ok && !z.groups()[g].list.empty();
+            for (size_t k = 0; k < z.groups()[g].list.size(); k++)
+                for (size_t j = 0; j < z.groups()[g].list[k].ids.size(); j++) {
+                    uint16_t id = z.groups()[g].list[k].ids[j];
+                    ok = ok && id < items.size() && !items[id].name.empty();
+                }
+        }
+        CHECK(ok);
+    }
+
+    // The shipped file, against the shipped items.txt.
+    const char* assets = getenv("PP_ASSETS");
+    if (!assets) { printf("  shipped item_collections.txt: skipped (PP_ASSETS not set)\n"); return; }
+    std::vector<Item> all;
+    FILE* it = fopen((std::string(assets) + "/items.txt").c_str(), "rb");
+    char line[256]; uint16_t id = 0;
+    while (it && fgets(line, sizeof line, it)) {             // same loader as main.cpp
+        size_t n = strlen(line);
+        while (n && (line[n-1] == '\n' || line[n-1] == '\r')) line[--n] = 0;
+        all.push_back({ id++, line });
+    }
+    if (it) fclose(it);
+    ItemCollections s;
+    CHECK(s.load((std::string(assets) + "/item_collections.txt").c_str(), all) && s.ignoredLines() == 0);
+    CHECK(s.groups().size() == 5 && s.count() == 113 && s.typed() > 9000);
+    auto idOf = [&](const char* n) { for (size_t k = 0; k < all.size(); k++) if (all[k].name == n) return (uint16_t)k; return (uint16_t)0xFFFE; };
+    const Collection* jp = nullptr;
+    for (size_t g = 0; g < s.groups().size(); g++)
+        for (size_t k = 0; k < s.groups()[g].list.size(); k++)
+            if (s.groups()[g].list[k].name == "Japanese, traditional") jp = &s.groups()[g].list[k];
+    CHECK(jp != nullptr);
+    if (jp) {
+        std::vector<int> v = collectionItems(*jp, all);
+        bool hasStand = false, hasZori = false, hasBenchHere = false, noRoses = true;
+        for (size_t k = 0; k < v.size(); k++) {
+            const std::string& n = all[v[k]].name;
+            if (n == "kimono stand") hasStand = true;
+            if (n.rfind("zori", 0) == 0) hasZori = true;
+            if (n.rfind("bamboo bench", 0) == 0) hasBenchHere = true;
+            if (n.rfind("gold roses", 0) == 0) noRoses = false;
+        }
+        CHECK(v.size() > 150 && hasStand && hasZori && hasBenchHere && noRoses);
+        printf("    Japanese, traditional: %d ids\n", (int)v.size());
+    }
+    CHECK(s.typeOf(idOf("kimono stand")) == IT_FURNITURE && s.typeOf(idOf("tatami flooring")) != IT_CLOTHING);
+    CHECK(s.typeOf(idOf("Nook Miles Ticket")) == IT_OTHER);
+    printf("    %d collections, %d items typed\n", s.count(), s.typed());
+}
+
 static void testGlyphRules() {
     printf("item glyph rules\n");
     std::vector<Item> items;
@@ -670,6 +776,7 @@ int main() {
     testGlyphsMatchTool();
     testBackupCheck();
     testFuzzParsers();
+    testCollections();
 
     printf("\n%d passed, %d failed\n", g_pass, g_fail);
     return g_fail ? 1 : 0;

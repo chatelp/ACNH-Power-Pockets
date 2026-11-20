@@ -35,6 +35,12 @@ jobs:
             mkdir -p "nhse/$(dirname "$f")" && curl -fsSL "$base/$f" -o "nhse/$f"
           done
           python3 tools/make_item_stacks.py nhse --check
+      # item_collections.txt must be exactly what the script makes from the pinned spreadsheet JSON.
+      - name: Collections match the spreadsheet data
+        run: |
+          mkdir -p acdata
+          curl -fsSL https://raw.githubusercontent.com/Norviah/animal-crossing/8bec58729a10879d575ba18d50a1dda74804a374/json/combined/Items.min.json -o acdata/Items.min.json
+          python3 tools/make_item_collections.py acdata/Items.min.json --check
       - name: Host tests
         run: CXX=clang++ sh tests/host/run.sh
       # Real main.cpp on a fake console (synthetic save, injected failures).
@@ -60,7 +66,7 @@ jobs:
           mkdir -p dist/switch/acnh_power_pockets
           cp acnh_power_pockets.nro icon.png dist/switch/acnh_power_pockets/
           cp assets/font.ttf assets/items.txt assets/ui_icons.png assets/nonstackable.txt dist/switch/acnh_power_pockets/
-          cp assets/item_glyphs.png assets/item_glyphs.txt assets/item_stacks.txt dist/switch/acnh_power_pockets/
+          cp assets/item_glyphs.png assets/item_glyphs.txt assets/item_stacks.txt assets/item_collections.txt dist/switch/acnh_power_pockets/
           cp LICENSE THIRD_PARTY_NOTICES.md dist/switch/acnh_power_pockets/
           cp -R licenses dist/switch/acnh_power_pockets/
       - uses: actions/upload-artifact@v4

@@ -46,6 +46,7 @@ struct EngineHooks {
     StackRules* stack = nullptr;
     StackLimits* limits = nullptr;        // optional game stack limits (item_stacks.txt), for System > Info
     GlyphMap*   glyphs = nullptr;         // optional item pictures (item_glyphs.txt)
+    ItemCollections* collections = nullptr;   // optional Catalog collections and item types (item_collections.txt)
     bool saveReady = false;               // the 4 save files were read and decrypted
     bool editSupported = false;           // invariant I9 (known save layout)
     bool sessionBackupKept = false;       // a pre-edit backup of this very save state is already on the SD card
