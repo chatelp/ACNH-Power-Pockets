@@ -139,7 +139,8 @@ Power Pockets has its own file name and its own folder (`switch/acnh_power_pocke
 | **B** | Close a menu, dialog or number editor |
 | **+** | Review pending changes, then Apply / Discard / Quit |
 | **−** | Discard all pending changes |
-| **ZL, ZR, X** | Nothing, on purpose |
+| **X** | In *Catalog*: search, from any page or row |
+| **ZL, ZR** | Nothing, on purpose |
 
 ### Panels
 
@@ -147,7 +148,7 @@ Power Pockets has its own file name and its own folder (`switch/acnh_power_pocke
 |---|---|
 | **Pockets** | Your 20, 30 or 40 slots, in 2, 3 or 4 columns of 10. **Y** places the item in hand in the next empty slot, or picks up the item under the cursor when your hand is empty. Menu: *Fill empty slots*, *Take in hand*, *Quantity…*, *Held quantity…*, *Enter item ID (hex)…*, *Add/Remove favorite*, *Revert to original*, *Clear slot*. |
 | **Favorites** | Two groups, each A to Z: **YOURS**, then **BUILT-IN**. **Y** takes one and jumps back to Pockets. A built-in favorite can be hidden, and comes back with *Restore default favorites*. |
-| **Catalog** | Search by name or 4-digit hex ID. ★ marks your favorites. |
+| **Catalog** | Search by name or 4-digit hex ID: **X** opens the keyboard from anywhere in the results. ★ marks your favorites. |
 | **Bells & Miles** | Wallet, Bank, Nook Miles, House loan. Step with the D-pad (±1,000 / ±100,000, ×10 after holding 2 s) or type a value. A warning shows above the game's wallet limit (99,999). |
 | **Turnips** | Read-only: Daisy Mae's price, the week's prices and pattern, a graph, and the value of the turnips you carry. A banner warns when the prices are from a past week. |
 | **Loadouts** | Five saved pocket setups. Loading one is a pending change like any other. |

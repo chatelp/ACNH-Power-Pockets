@@ -111,7 +111,7 @@ int main(int argc, char** argv) {
     loadoutWrite((sd + "l_0.dat").c_str(), loadout);
 
     // Fake engine. apply() reproduces what main.cpp + doSave() do with the slot vars (I2).
-    int applyCalls = 0, restoreCalls = 0, doctorCalls = 0, sessionCalls = 0;
+    int applyCalls = 0, restoreCalls = 0, doctorCalls = 0, sessionCalls = 0, kbCalls = 0;
     int gSlot = 7; int32_t gNewId = 0x1234, gNewCount = 55;     // deliberately stale
     uint8_t written[POCKETS_BYTES]; uint32_t writtenVals[4] = { 0, 0, 0, 0 };
     std::deque<std::string> keyboard;
@@ -145,6 +145,7 @@ int main(int argc, char** argv) {
         d.backupPersonal = 0x74A40; d.backupMain = 0x9B0E90; d.sessionPersonal = -1; d.sessionMain = -1;
     };
     h.keyboard = [&](const char*, const char* init) {
+        kbCalls++;
         if (keyboard.empty()) return std::string(init ? init : "");
         std::string s = keyboard.front(); keyboard.pop_front(); return s;
     };
@@ -163,7 +164,8 @@ int main(int argc, char** argv) {
 
     const uint64_t A = HidNpadButton_A, B = HidNpadButton_B, Y = HidNpadButton_Y, L = HidNpadButton_L, R = HidNpadButton_R,
                    UP = HidNpadButton_Up, DOWN = HidNpadButton_Down, LEFT = HidNpadButton_Left, RIGHT = HidNpadButton_Right,
-                   PLUS = HidNpadButton_Plus, MINUS = HidNpadButton_Minus, ZL = HidNpadButton_ZL, ZR = HidNpadButton_ZR;
+                   PLUS = HidNpadButton_Plus, MINUS = HidNpadButton_Minus, ZL = HidNpadButton_ZL, ZR = HidNpadButton_ZR,
+                   X = HidNpadButton_X;
 
     // A stack above the game's limit is flagged in the grid and in the detail line, never changed.
     press(ui, RIGHT); press(ui, DOWN, 2); idle(ui);
@@ -223,6 +225,28 @@ int main(int argc, char** argv) {
     press(ui, DOWN); press(ui, A); idle(ui);
     shot("catalog-menu");
     press(ui, B);
+
+    // Catalog: X searches from any page or row, without going back to the search field.
+    {
+        keyboard.push_back("a");
+        int k0 = kbCalls;
+        press(ui, X); idle(ui);                                   // cursor on a result: X opens the keyboard
+        CHECK(kbCalls == k0 + 1 && keyboard.empty());
+        press(ui, RIGHT, 2); press(ui, DOWN, 3); idle(ui);       // page 3, row 4
+        shot("catalog-search-hint");
+        keyboard.push_back("golden");
+        press(ui, X); idle(ui);                                   // new search from deep in the results
+        CHECK(kbCalls == k0 + 2 && keyboard.empty());
+        shot("catalog-x-new-results");                            // cursor back on the first result, page 1
+        int k1 = kbCalls;
+        press(ui, A); idle(ui);                                   // A on a result still opens the item menu, not the keyboard
+        CHECK(kbCalls == k1);
+        press(ui, B); idle(ui);
+        press(ui, UP); idle(ui);                                  // UP from the first result goes to the field
+        press(ui, A); idle(ui);                                   // A on the field types (empty queue: unchanged)
+        CHECK(kbCalls == k1 + 1);
+        press(ui, DOWN); idle(ui);
+    }
 
     // Bells & Miles: wallet +3,000 via the stepper.
     press(ui, R); idle(ui);

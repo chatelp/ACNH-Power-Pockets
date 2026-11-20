@@ -427,9 +427,12 @@ struct Ui::Impl {
 
     void pager(int page, int pages) {
         if (pages <= 1) return;
-        int total = pages * 16 - 8;
-        int x0 = 640 - total / 2;
-        for (int i = 0; i < pages; i++) fill({ x0 + i * 16, 564, 8, 8 }, i == page ? C::wood : C::lineSoft);
+        static const int MAX_DOTS = 40;                        // beyond that the dots would run off the panel
+        if (pages <= MAX_DOTS) {
+            int total = pages * 16 - 8;
+            int x0 = 640 - total / 2;
+            for (int i = 0; i < pages; i++) fill({ x0 + i * 16, 564, 8, 8 }, i == page ? C::wood : C::lineSoft);
+        }
         textR(fSmall, fmt("Page %d/%d", page + 1, pages), C::textSecond, 1220, 556);
     }
 
@@ -824,7 +827,7 @@ struct Ui::Impl {
         frameRect(sr, f == 0 ? 3 : 2, f == 0 ? C::selectBg : C::wood);
         textMid(fSmall, S::SEARCH_LABEL, C::textSecond, sr.x + 24, sr);
         textMid(fBody, fit(fBody, query, 800), C::textPrimary, sr.x + 104, sr);
-        textR(fSmall, S::SEARCH_HINT, C::textSecond, sr.x + sr.w - 20, sr.y + (ROW_H - fontH(fSmall)) / 2);
+        textR(fSmall, f == 0 ? S::SEARCH_HINT : S::SEARCH_HINT_X, C::textSecond, sr.x + sr.w - 20, sr.y + (ROW_H - fontH(fSmall)) / 2);
         if (!itemsLoaded()) return;
         if (!query.empty() && results.empty()) { emptyState(fmt(S::SEARCH_NONE_FMT, query.c_str()), S::SEARCH_EMPTY); return; }
         int sel = f - 1;
@@ -850,6 +853,7 @@ struct Ui::Impl {
         if (nav & HidNpadButton_AnyDown) { f = (f + 1) % n; dirty = true; }
         if ((nav & HidNpadButton_AnyRight) && f > 0) { f = std::min(n - 1, f + CAT_ROWS); dirty = true; }
         if ((nav & HidNpadButton_AnyLeft) && f > 0) { f = std::max(1, f - CAT_ROWS); dirty = true; }
+        if (down & HidNpadButton_X) { if (itemsLoaded()) runSearch(); return; }   // search from any page or row
         if (!(down & (HidNpadButton_A | HidNpadButton_Y))) return;
         if (f == 0) { if (itemsLoaded()) runSearch(); return; }
         uint16_t id = (uint16_t)results[f - 1];
@@ -1790,6 +1794,7 @@ struct Ui::Impl {
             left.push_back({ "A", true, S::H_ACTIONS, panel == P_TURNIPS, false });
             left.push_back({ "Y", true, y, yOff, false });
             left.push_back({ "B", true, S::H_BACK, true, false });
+            if (panel == P_CATALOG) left.push_back({ "X", true, S::H_SEARCH, !itemsLoaded(), false });
             int n = pending();
             right.push_back({ "L", false, "", false, false });
             right.push_back({ "R", false, S::H_PANEL, false, false });

@@ -120,6 +120,7 @@ Justification :
 
 #### Panneau 3 — Catalogue
 - Ligne **Recherche** en tête de liste : `Rechercher : [ springy ]` ; A ou Y dessus ouvre le clavier natif (`showKeyboard`, `l.272`).
+- **X** ouvre le clavier depuis n'importe quelle page ou ligne de résultats (ajout v1.2.1 : avant, il fallait revenir à la page 1 et remonter jusqu'au champ). L'indication du champ suit le curseur : « A, Y or X to type » sur le champ, « X to search » sur un résultat. Au-delà de 40 pages, les points de pagination sont remplacés par le seul « Page n/N ».
 - **Résultats** : liste paginée (6 à 8 par page selon la charte), compteur « 42 résultats ». Chaque ligne : ID hex, nom, badges `★` et `1/slot`.
 - La dernière recherche et la position dans les résultats sont conservées quand on change de panneau.
 - Sans recherche : texte d'aide « Ⓐ pour saisir un nom (ex. "star"). »
