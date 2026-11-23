@@ -108,7 +108,7 @@ Do this once, with a save you can afford to lose. It checks, on your console and
 
 Requirements: a Switch running Atmosphère, and Animal Crossing: New Horizons **3.0.x** (other save versions open read-only).
 
-1. Download `ACNH-Power-Pockets-v1.2.0.zip` (or whatever is newest) from the [latest release](../../releases/latest) and extract it to the root of the SD card. It creates `switch/acnh_power_pockets/`. Builds of every commit are also in the [Actions tab](../../actions) (GitHub login required).
+1. Download `ACNH-Power-Pockets-v1.3.0.zip` (or whatever is newest) from the [latest release](../../releases/latest) and extract it to the root of the SD card. It creates `switch/acnh_power_pockets/`. Builds of every commit are also in the [Actions tab](../../actions) (GitHub login required).
 2. Fully close the game: HOME › highlight Animal Crossing › **X** › Close. A suspended game overwrites your edits on its next autosave.
 3. Hold **R** while starting Animal Crossing to open the Homebrew Menu, then launch **ACNH Power Pockets**. Launching from the Album is refused: it doesn't give the app enough access.
 
