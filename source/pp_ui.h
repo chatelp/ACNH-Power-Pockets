@@ -18,6 +18,7 @@
 #include <vector>
 
 #include "pp_model.h"
+#include "pp_update.h"
 
 namespace pp {
 
@@ -33,6 +34,23 @@ struct InfoData {
     // SD files
     long   backupPersonal = -1, backupMain = -1;
     long   sessionPersonal = -1, sessionMain = -1;
+};
+
+// Update service, implemented by main.cpp (worker thread + network). It knows nothing of
+// the save. Everything starts from a button; nothing runs on its own.
+class Updater {
+public:
+    virtual ~Updater() {}
+    virtual bool online() = 0;            // is the console already connected? (never connects it)
+    virtual bool canInstall() = 0;        // this .nro is the one a release would replace
+    virtual void check() = 0;             // then poll state()
+    virtual void download() = 0;
+    virtual void cancel() = 0;
+    virtual void discard() = 0;           // forget a package that won't be installed
+    virtual UpdateState state() = 0;
+    virtual int percent() = 0;
+    virtual UpdateError error() = 0;
+    virtual const ReleaseInfo& release() = 0;
 };
 
 struct EngineHooks {
@@ -55,6 +73,9 @@ struct EngineHooks {
     int loadoutCount = 0;
     std::string sdDir;                    // "sdmc:/switch/acnh_power_pockets/"
     std::string version;
+    Updater* updater = nullptr;           // optional: System > About > Check for updates
+    std::string startupNote;              // toast shown at launch (result of an update)
+    bool startupWarn = false;
 
     // ---- Engine wrappers (defined in main.cpp, engine code untouched) ----
     std::function<EngineResult()> apply;               // sync (I2) + doSave()
@@ -80,6 +101,8 @@ public:
     void splash();
     // Call once after the save is loaded: takes the Base snapshot.
     void start(EngineHooks& e);
+    // The user chose "Install and restart": main.cpp installs once everything is closed.
+    bool installRequested() const;
     // One frame: input, logic, render. Returns false when the app must quit.
     bool frame(uint64_t down, uint64_t held);
 

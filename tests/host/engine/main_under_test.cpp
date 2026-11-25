@@ -35,6 +35,9 @@
 #include <assert.h>
 #include "pp_model.h"
 #include "pp_ui.h"
+#include "pp_update.h"
+#include "pp_net.h"
+#include "pp_strings.h"
 
 extern "C" void* pp_bench_malloc(size_t size);
 #define malloc pp_bench_malloc

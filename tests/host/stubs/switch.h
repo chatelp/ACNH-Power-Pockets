@@ -63,6 +63,24 @@ AppletType appletGetAppletType(void);
 bool appletMainLoop(void);
 void svcSleepThread(s64 ns);
 
+// Updates: next program to start, network state, sockets, threads.
+bool   envHasNextLoad(void);
+Result envSetNextLoad(const char* path, const char* argv);
+typedef enum { NifmServiceType_User = 0 } NifmServiceType;
+typedef enum { NifmInternetConnectionType_WiFi = 1, NifmInternetConnectionType_Ethernet = 2 } NifmInternetConnectionType;
+typedef enum { NifmInternetConnectionStatus_ConnectingUnknown1 = 0, NifmInternetConnectionStatus_Connected = 4 } NifmInternetConnectionStatus;
+Result nifmInitialize(NifmServiceType type);
+void   nifmExit(void);
+Result nifmGetInternetConnectionStatus(NifmInternetConnectionType* type, u32* strength, NifmInternetConnectionStatus* status);
+Result socketInitializeDefault(void);
+void   socketExit(void);
+typedef struct { void* handle; } Thread;
+typedef void (*ThreadFunc)(void*);
+Result threadCreate(Thread* t, ThreadFunc entry, void* arg, void* stack_mem, size_t stack_sz, int prio, int cpuid);
+Result threadStart(Thread* t);
+Result threadWaitForExit(Thread* t);
+Result threadClose(Thread* t);
+
 #define BITL(n) (1ULL << (n))
 enum : u64 {
     HidNpadButton_A = BITL(0), HidNpadButton_B = BITL(1), HidNpadButton_X = BITL(2), HidNpadButton_Y = BITL(3),

@@ -22,7 +22,7 @@ CFLAGS		:=	-g -Wall -O2 -ffunction-sections -fdata-sections $(ARCH) -D__SWITCH__
 CXXFLAGS	:=	$(CFLAGS) -fno-rtti -fno-exceptions -std=gnu++17
 LDFLAGS		:=	-specs=$(DEVKITPRO)/libnx/switch.specs -g $(ARCH) -Wl,-Map,$(notdir $*.map)
 
-LIBS		:= -lSDL2 -lSDL2_ttf -Wl,--start-group -lfreetype -lharfbuzz -lpng16 -lbz2 -lz -Wl,--end-group -lEGL -lglapi -ldrm_nouveau -lnx
+LIBS		:= -lSDL2 -lSDL2_ttf -lcurl -Wl,--start-group -lfreetype -lharfbuzz -lpng16 -lbz2 -lz -Wl,--end-group -lEGL -lglapi -ldrm_nouveau -lnx
 LIBDIRS		:=	$(DEVKITPRO)/libnx $(DEVKITPRO)/portlibs/switch
 
 #---------------------------------------------------------------------------------
@@ -41,6 +41,10 @@ APP_VERSION	:=	1.3.0
 CFLAGS += -I$(DEVKITPRO)/portlibs/switch/include -DAPP_VERSION_STR=\"$(APP_VERSION)\"
 CXXFLAGS += -I$(DEVKITPRO)/portlibs/switch/include -DAPP_VERSION_STR=\"$(APP_VERSION)\"
 LDFLAGS += -L$(DEVKITPRO)/portlibs/switch/lib
+# Test builds only: make UPDATE_REPO=owner/name APP_VERSION=1.0.0 looks for updates in another repository.
+ifneq ($(strip $(UPDATE_REPO)),)
+CXXFLAGS += -DUPDATE_REPO_STR=\"$(UPDATE_REPO)\"
+endif
 
 ifneq ($(BUILD),$(notdir $(CURDIR)))
 

@@ -76,7 +76,7 @@ static bool writeDisk(const std::string& p, const std::vector<uint8_t>& d) {
 static bool exists(const std::string& p) { struct stat st; return stat(p.c_str(), &st) == 0; }
 
 void reset() {
-    faults = Faults(); counters = Counters();
+    faults = Faults(); counters = Counters(); net = Net();
     script.clear(); keyboardReplies.clear();
     g_files.clear(); g_journal.clear(); g_live.clear();
     g_ticks = 1000;

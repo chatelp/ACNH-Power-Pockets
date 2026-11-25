@@ -5,7 +5,7 @@
 >
 > - **Back up your save with [JKSV](https://github.com/J-D-K/JKSV) or [Checkpoint](https://github.com/BernardoGiordano/Checkpoint) before every editing session, and copy that backup to a computer.** The app's own SD backups are a safety net, not a replacement.
 > - **Tested on one console and one save only (game 3.0.3).** The very first test was refused by the game as corrupted: one integrity hash had not been updated. Version 1.0.0 recomputes them, and its edits were then accepted by the game. **Version 1.0.0 also got stack quantities wrong:** every stack it placed came out one item larger (9 tickets gave 10), and it let a stack go past what the game allows (50 wood came out as 11). Version 1.0.1 fixes both, and the fix was checked in the game on 3.0.3: 9 tickets, 30 wood, 1 apple and 10 pears placed came out exact, a stack changed from 30 to 12 too, and a 61-nugget stack left by 1.0.0 went back to 30. That is still a single island: do the [first-use test](#first-use-test) on a save you can afford to lose before touching yours.
-> - Offline use only. Editing saves can get you into trouble online and may break Nintendo's terms of service. Never trade edited or unreleased items with other players.
+> - Play offline only. Editing saves can get you into trouble online and may break Nintendo's terms of service. Never trade edited or unreleased items with other players.
 > - Provided **as is, with no warranty of any kind** (MIT license). You alone are responsible for what happens to your save, your console and your accounts. Not affiliated with or endorsed by Nintendo.
 
 ![Power Pockets: pocket and Bells editor for ACNH](banner.png)
@@ -121,7 +121,18 @@ The folder should contain:
 | `item_glyphs.png`, `item_glyphs.txt` | Strongly recommended: item pictures, and the kinds of items that never stack (without them, the `1/slot` protection only covers tools and the few items listed in `nonstackable.txt`) |
 | `item_stacks.txt` | Strongly recommended: the largest stack the game allows for each item (without it, quantities are only kept within 1–99, and the game cuts a stack that is too large in its own way) |
 | `item_collections.txt` | Recommended: the collections of *Catalog* and its type filter (without it, *Catalog* only searches) |
-| `icon.png`, `ui_icons.png`, `nonstackable.txt` | Optional: icons, extra `1/slot` rules |
+| `icon.png`, `ui_icons.png`, `author.png`, `nonstackable.txt` | Optional: icons, the picture in *About*, extra `1/slot` rules |
+
+### Updating from the app
+
+From version 1.4.0, *System › About and updates › Check for updates* looks for a newer release on GitHub and can install it.
+
+- **Nothing happens on its own.** The app connects only when you press that button and confirm, never turns Wi-Fi on, and sends nothing about you or your save. Going online with custom firmware is at your own risk; you can always update by hand instead.
+- **What is checked:** the connection is HTTPS with certificate verification, the package must be the one published in this repository, and its SHA-256 must match the one GitHub publishes. A package with anything unexpected in it is refused whole.
+- **What is replaced:** the files of the release, in `switch/acnh_power_pockets/`. Your save, backups, loadouts, favorites and your `nonstackable.txt` are not touched. The installation runs when the app closes, after the save was closed.
+- **If it goes wrong:** a failed or interrupted installation is undone, at once or at the next launch. Until the new version has started once, the old one stays next to it as `acnh_power_pockets_previous.nro`: launch that one from the Homebrew Menu to go back. Afterwards it is kept as `update/previous.nro`.
+
+It only works for the copy of the app at `switch/acnh_power_pockets/acnh_power_pockets.nro`. The Homebrew App Store doesn't know about updates made this way: it may offer the version you already have.
 
 ### Already using ACNH-Save-Editor?
 
@@ -157,7 +168,7 @@ Power Pockets has its own file name and its own folder (`switch/acnh_power_pocke
 | **Bells & Miles** | Wallet, Bank, Nook Miles, House loan. Step with the D-pad (±1,000 / ±100,000, ×10 after holding 2 s) or type a value. A warning shows above the game's wallet limit (99,999). |
 | **Turnips** | Read-only: Daisy Mae's price, the week's prices and pattern, a graph, and the value of the turnips you carry. A banner warns when the prices are from a past week. |
 | **Loadouts** | Five saved pocket setups. Loading one is a pending change like any other. |
-| **System** | Restore backups, Save Doctor, reload your lists, diagnostics, quit. |
+| **System** | Restore backups, Save Doctor, reload your lists, diagnostics, *About and updates*, quit. |
 
 ### Recipes
 
@@ -208,6 +219,7 @@ All in `sdmc:/switch/acnh_power_pockets/`.
 | `damaged_*.dat` | Save Doctor | Copy taken before a repair |
 | `l_0.dat` … `l_4.dat` | the app | Loadouts: 160 bytes for 20 slots (the upstream format), 320 bytes for 30 or 40 slots |
 | `layout_*.dat` | the app | Cache of the save's region layout |
+| `update/` | the app | A downloaded update, and the previous version after an update (`previous.nro`) |
 
 `user_favorites.txt` format:
 ```text
@@ -241,11 +253,12 @@ Tools (axes, nets, fishing rods, shovels, watering cans, slingshots, ladder, vau
 | "This backup doesn't belong to the current save" | The game has saved since the backup was made, or the file is damaged. It can't be restored; use your JKSV/Checkpoint backup. |
 | "Read-only: unsupported save version" | Your save isn't the 3.0.x layout this engine knows. Nothing will be written. |
 | Changes vanished in the game | The game was suspended while you edited, or you quit without **Apply**. |
+| "The secure connection to GitHub couldn't be verified" | Usually the console's date is wrong (time travel). Set it right, or update by hand. |
 | Restore is blocked | Apply or discard your pending changes first, or the last backup wasn't written completely (System › Info). |
 
 ## Building and testing
 
-You need devkitPro with `switch-dev`, `switch-sdl2` and `switch-sdl2_ttf`. Then run:
+You need devkitPro with `switch-dev`, `switch-sdl2`, `switch-sdl2_ttf` and `switch-curl`. Then run:
 ```sh
 make
 ```
@@ -255,7 +268,7 @@ You can check the project without a Switch:
 ```sh
 git remote add upstream https://github.com/cbreezy210/ACNH-Save-Editor.git && git fetch upstream
 python3 tools/check_engine_untouched.py upstream/main   # proves the save engine matches upstream, SD folder name aside
-sh tests/host/run.sh            # unit tests, parser fuzzing, item-picture rules vs the design tool, compile check
+sh tests/host/run.sh            # unit tests (updates included: interrupted at every step), parser fuzzing, item-picture rules vs the design tool, compile check
 sh tests/host/engine_bench.sh   # the real main.cpp on a fake console: byte-exact Apply / restore / Doctor, injected failures
 PP_REAL_SAVE=<unzipped JKSV backup> sh tests/host/engine_bench.sh real_save   # same checks on a dump of your own save
 sh tests/host/ui_shots.sh       # the real UI with a fake engine: flows and failure dialogs, with screenshots
@@ -267,6 +280,7 @@ The two `ui_*` scripts need SDL2 and SDL2_ttf (`brew install sdl2 sdl2_ttf`) and
 |---|---|
 | `source/main.cpp` | Upstream save engine and the wiring to the UI |
 | `source/pp_model.*` | Testable logic: slots, pending changes, favorites, `1/slot` and picture rules, backup checks, turnip prices |
+| `source/pp_update.*`, `source/pp_net.*` | Updates: release check, package, installation and its undo (testable), and the HTTPS client |
 | `source/pp_ui.*`, `source/pp_strings.h` | Panels, dialogs, every on-screen string |
 | `tools/` | Engine check, the scripts that draw the logo, icons and item pictures, and the ones that build `item_stacks.txt` from NHSE and `item_collections.txt` from the community spreadsheet |
 | `docs/design/` | Visual design system, item pictures, HTML mockups |
@@ -316,5 +330,6 @@ Four shipped data files keep their own license (details in [THIRD_PARTY_NOTICES.
 - **kwsch and [NHSE](https://github.com/kwsch/NHSE)** — the ACNH save-format research everything here relies on, the item names table (`items.txt`) and the item kinds and stack limits behind `item_stacks.txt` (GPL-3.0).
 - **The [Animal Crossing: New Horizons data spreadsheet](https://docs.google.com/spreadsheets/d/1mo7myqHry5r_TKvakvIhHbcEAEQpSiNoNQoIS8sMpvM) community and Norviah's [animal-crossing](https://github.com/Norviah/animal-crossing) JSON (MIT)** — the series, themes, styles and tags behind the Catalog collections (`item_collections.txt`).
 - **averne and [Turnips](https://github.com/averne/Turnips)** — the turnip prices previewer that inspired the Turnips panel, and the location of the save date. No code was taken from it.
-- **[devkitPro](https://devkitpro.org) / libnx**, **SDL2**, **SDL_ttf**, **stb_image**.
+- **[devkitPro](https://devkitpro.org) / libnx**, **SDL2**, **SDL_ttf**, **stb_image**, **[curl](https://curl.se)** (`licenses/curl.txt`).
+- The portrait in *About* (`author.png`) is not under the MIT license; please replace it in a fork.
 - **Varela Round** font by The Varela Round Project Authors (SIL Open Font License 1.1).

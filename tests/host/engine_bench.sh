@@ -17,7 +17,7 @@ FLAGS="-std=gnu++17 -fno-exceptions -fno-rtti -O2 -g"
 
 cc() {  # cc <source> <object> [extra flags]
     src="$1"; obj="$2"; shift 2
-    $CXX $FLAGS -D__SWITCH__ -DAPP_VERSION_STR='"bench"' \
+    $CXX $FLAGS -D__SWITCH__ -DAPP_VERSION_STR='"1.4.0"' \
         -I"$ROOT/tests/host/stubs" -I"$SRC" -I"$ROOT/tests/host/engine" "$@" -c "$src" -o "$obj"
 }
 
@@ -27,7 +27,10 @@ echo "== engine bench (real main.cpp, fake Switch platform) =="
 cc "$ROOT/tests/host/engine/main_under_test.cpp" "$OUT/main.o"
 cc "$SRC/pp_model.cpp" "$OUT/pp_model.o"
 cc "$SRC/pp_ui.cpp" "$OUT/pp_ui.o"
+cc "$SRC/pp_update.cpp" "$OUT/pp_update.o"
+cc "$SRC/pp_net.cpp" "$OUT/pp_net.o"
+cc "$ROOT/tests/host/engine/fake_net.cpp" "$OUT/fake_net.o"
 cc "$ROOT/tests/host/engine/fake_platform.cpp" "$OUT/fake_platform.o"
 cc "$ROOT/tests/host/engine/engine_bench.cpp" "$OUT/engine_bench.o"
-$CXX $FLAGS "$OUT/main.o" "$OUT/pp_model.o" "$OUT/pp_ui.o" "$OUT/fake_platform.o" "$OUT/engine_bench.o" -o "$OUT/engine_bench"
+$CXX $FLAGS "$OUT/main.o" "$OUT/pp_model.o" "$OUT/pp_ui.o" "$OUT/pp_update.o" "$OUT/pp_net.o" "$OUT/fake_platform.o" "$OUT/fake_net.o" "$OUT/engine_bench.o" -lz -o "$OUT/engine_bench"
 "$OUT/engine_bench" "$ROOT" "$OUT/worlds" "$@"

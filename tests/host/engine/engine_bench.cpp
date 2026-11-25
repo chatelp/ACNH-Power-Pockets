@@ -12,6 +12,7 @@
 // ============================================================================
 #include "fake_platform.h"
 #include "pp_model.h"
+#include "pp_update.h"
 
 #include <switch.h>
 
@@ -24,6 +25,7 @@
 #include <sys/stat.h>
 #include <sys/wait.h>
 #include <unistd.h>
+#include <zlib.h>
 
 int pp_app_main(int argc, char** argv);                       // source/main.cpp, renamed in main_under_test.cpp
 void CryptACNH(const uint8_t* header, uint8_t* data, size_t dataLen);   // engine (symmetric AES-CTR)
@@ -49,6 +51,7 @@ static const uint16_t ID_NMT = 0x16DB, ID_WOOD = 0x0AD0, ID_APPLE = 0x08A5, ID_G
 // ------------------------------- test plumbing -----------------------------
 static int g_fail = 0, g_pass = 0;
 static int g_sysRow = 0;                                        // System panel cursor (row 0 at launch, kept between visits)
+static std::string g_arg0 = "app";                             // argv[0], the address of the .nro
 static bool g_rawStart = false;                                 // true: the script starts on the very first frame
 static const char* g_scn = "";
 static std::string g_repo, g_tmp;
@@ -219,7 +222,7 @@ static void launch(const World& w, const char* label, Build build, After after) 
         g_fail = 0; g_pass = 0; g_sysRow = 0;
         if (!g_rawStart) idle(2);                             // a real player never presses on the first frame
         build();
-        char arg0[] = "app"; char* argv[] = { arg0, nullptr };
+        std::string arg0 = g_arg0; char* argv[] = { &arg0[0], nullptr };
         pp_app_main(1, argv);
         after();
         CHECK(script.empty());                                // the app consumed the whole script
@@ -898,6 +901,92 @@ static void scnBag(const Save& s0) {
     });
 }
 
+// ---- updates ----
+static Bytes zipOf(const std::vector<std::pair<std::string, Bytes>>& files) {      // stored entries
+    Bytes o, cd;
+    auto p16 = [](Bytes& b, unsigned v) { b.push_back((uint8_t)v); b.push_back((uint8_t)(v >> 8)); };
+    auto p32 = [&](Bytes& b, uint32_t v) { p16(b, v & 0xFFFF); p16(b, v >> 16); };
+    for (const auto& f : files) {
+        uint32_t crc = (uint32_t)crc32(0, f.second.data(), (uInt)f.second.size()), off = (uint32_t)o.size(), n = (uint32_t)f.second.size();
+        p32(o, 0x04034b50); p16(o, 20); p16(o, 0); p16(o, 0); p32(o, 0); p32(o, crc); p32(o, n); p32(o, n); p16(o, (unsigned)f.first.size()); p16(o, 0);
+        o.insert(o.end(), f.first.begin(), f.first.end()); o.insert(o.end(), f.second.begin(), f.second.end());
+        p32(cd, 0x02014b50); p16(cd, 20); p16(cd, 20); p16(cd, 0); p16(cd, 0); p32(cd, 0); p32(cd, crc); p32(cd, n); p32(cd, n); p16(cd, (unsigned)f.first.size());
+        p16(cd, 0); p16(cd, 0); p16(cd, 0); p16(cd, 0); p32(cd, 0); p32(cd, off); cd.insert(cd.end(), f.first.begin(), f.first.end());
+    }
+    uint32_t at = (uint32_t)o.size();
+    o.insert(o.end(), cd.begin(), cd.end());
+    p32(o, 0x06054b50); p16(o, 0); p16(o, 0); p16(o, (unsigned)files.size()); p16(o, (unsigned)files.size()); p32(o, (uint32_t)cd.size()); p32(o, at); p16(o, 0);
+    return o;
+}
+static Bytes nroOf(const char* tag) { Bytes b(0x10, 1); const char* m = "NRO0"; b.insert(b.end(), m, m + 4); b.insert(b.end(), tag, tag + strlen(tag)); b.resize(70000, 7); return b; }
+static std::string hexOf(const Bytes& b) { pp::Sha256 s; s.update(b.data(), b.size()); return s.hex(); }
+static void putRelease(const char* version, const Bytes& zip, const std::string& digest) {
+    std::string tag = std::string("v") + version, name = "ACNH-Power-Pockets-" + tag + ".zip", url = "https://github.com/chatelp/ACNH-Power-Pockets/releases/download/" + tag + "/" + name;
+    net.pages[pp::UPDATE_API_URL] = "{\"tag_name\":\"" + tag + "\",\"draft\":false,\"prerelease\":false,\"body\":\"## What's new\\n- A brand new thing.\",\"assets\":[{\"name\":\"" + name +
+        "\",\"size\":" + std::to_string(zip.size()) + ",\"digest\":\"sha256:" + digest + "\",\"browser_download_url\":\"" + url + "\"}]}";
+    net.pages[url] = std::string(zip.begin(), zip.end());
+}
+static const char* NRO = "sdmc:/switch/acnh_power_pockets/acnh_power_pockets.nro";
+static const char* NRO_PREV = "sdmc:/switch/acnh_power_pockets/acnh_power_pockets_previous.nro";
+enum { ROW_ABOUT = 4 };
+static void openCheck() { panel(P_POCKETS, P_SYSTEM); systemRow(ROW_ABOUT); SEE("github.com/chatelp/ACNH-Power-Pockets"); SEE("cbreezy210"); press(LEFT); press(A); idle(2); SEE("Connect to GitHub?"); }
+static void connect() { press(RIGHT); press(A); idle(3); }
+
+// The whole update: check, download, install, restart, confirmation, going back; and what must not happen.
+static void scnUpdate(const Save& s0) {
+    g_scn = "update";
+    const Bytes oldNro = nroOf("1.4.0"), newNro = nroOf("1.4.1");
+    const std::string P = "switch/acnh_power_pockets/";
+    World w = makeWorld(g_scn, s0);
+    const std::string dst = w.root + "/sdmc:/switch/acnh_power_pockets/";
+    writeFile(dst + "acnh_power_pockets.nro", oldNro);
+    const Bytes fav = { '+', '1', '6', 'D', 'B', '\n' }, load(160, 0x11), font = slurp(g_repo + "/assets/font.ttf"), items = slurp(g_repo + "/assets/items.txt"), rules = slurp(g_repo + "/assets/nonstackable.txt");
+    writeFile(dst + "user_favorites.txt", fav); writeFile(dst + "l_0.dat", load);
+    const Bytes extra = { 'n', 'e', 'w' };
+    const Bytes zip = zipOf({ { P + "acnh_power_pockets.nro", newNro }, { P + "font.ttf", font }, { P + "items.txt", items }, { P + "nonstackable.txt", extra }, { P + "licenses/x.txt", extra }, { P + "extra.txt", extra } });
+    auto untouched = [&]() {
+        CHECK(counters.nandWrites == 0 && counters.commits == 0);
+        CHECK_SAME(slurp(NAND_P), s0.pEnc); CHECK_SAME(slurp(NAND_M), s0.mEnc);
+        CHECK_SAME(slurp(sd("user_favorites.txt")), fav); CHECK_SAME(slurp(sd("l_0.dat")), load); CHECK_SAME(slurp(sd("nonstackable.txt")), rules);
+        CHECK(!net.unsafe && net.socketInits == net.socketExits);
+    };
+    auto unchanged = [&]() { untouched(); CHECK_SAME(slurp(sd("acnh_power_pockets.nro")), oldNro); CHECK(!fileThere(sd("extra.txt")) && !fileThere(sd("update/new")) && net.nextLoad.empty()); };
+    g_arg0 = NRO;
+    // Nothing happens on its own: a normal session never asks for the network.
+    launch(w, "no network unless asked", [&]() { idle(2); panel(P_POCKETS, P_SYSTEM); systemRow(ROW_ABOUT); SEE("ACNH Power Pockets 1.4.0"); press(B); idle(2); NOT_SEE("cbreezy210");
+        systemRow(ROW_ABOUT); press(LEFT); press(A); idle(2); press(B); idle(2);              // Cancel in the question
+        panel(P_SYSTEM, P_POCKETS); quitFromPanel(); },
+        [&]() { unchanged(); CHECK(net.urls.empty() && net.onlineChecks == 0 && net.socketInits == 0); });
+    launch(w, "offline", [&]() { net.connected = false; idle(2); openCheck(); connect(); SEE("isn't connected to the internet"); press(A); idle(2); panel(P_SYSTEM, P_POCKETS); quitFromPanel(); },
+        [&]() { unchanged(); CHECK(net.urls.empty() && net.socketInits == 0); });
+    launch(w, "up to date", [&]() { putRelease("1.4.0", zip, hexOf(zip)); idle(2); openCheck(); connect(); SEE("You have the latest version (1.4.0)"); press(A); idle(2); panel(P_SYSTEM, P_POCKETS); quitFromPanel(); },
+        [&]() { unchanged(); CHECK(net.urls.size() == 1); });
+    struct { const char* label; int curl; bool sock, thr; const char* see; } errs[] = {
+        { "bad certificate", 60, false, false, "date and time" }, { "no answer", 28, false, false, "connection was lost" }, { "sockets refused", 0, true, false, "connection was lost" }, { "thread refused", 0, false, true, "connection was lost" } };
+    for (const auto& x : errs)
+        launch(w, x.label, [&]() { net.curlResult = x.curl; net.socketFail = x.sock; net.threadFail = x.thr; idle(2); openCheck(); connect(); SEE(x.see); press(A); idle(2); panel(P_SYSTEM, P_POCKETS); quitFromPanel(); }, unchanged);
+    launch(w, "not now", [&]() { putRelease("1.4.1", zip, hexOf(zip)); idle(2); openCheck(); connect(); SEE("Version 1.4.1 is available"); SEE("A brand new thing."); press(A); idle(2); panel(P_SYSTEM, P_POCKETS); quitFromPanel(); },
+        [&]() { unchanged(); CHECK(net.urls.size() == 1); });
+    launch(w, "pending changes block it", [&]() { putRelease("1.4.1", zip, hexOf(zip)); idle(2); static Model m; m = s0.model; placeTicket(m, 5); openCheck(); connect(); press(RIGHT); press(A); idle(2); SEE("Apply or discard your pending changes");
+        press(A); idle(2); press(MINUS); idle(2); press(RIGHT); press(A); idle(2); panel(P_SYSTEM, P_POCKETS); quitFromPanel(); }, [&]() { unchanged(); CHECK(net.urls.size() == 1); });
+    launch(w, "wrong checksum", [&]() { putRelease("1.4.1", zip, std::string(64, 'a')); idle(2); openCheck(); connect(); press(RIGHT); press(A); idle(3); SEE("wrong checksum"); press(A); idle(2); panel(P_SYSTEM, P_POCKETS); quitFromPanel(); }, unchanged);
+    launch(w, "downloaded, not installed", [&]() { putRelease("1.4.1", zip, hexOf(zip)); idle(2); openCheck(); connect(); press(RIGHT); press(A); idle(3); SEE("Install version 1.4.1?"); press(A); idle(2); SEE("nothing was installed"); panel(P_SYSTEM, P_POCKETS); quitFromPanel(); }, unchanged);
+    g_arg0 = "sdmc:/switch/somewhere_else.nro";
+    launch(w, "another copy of the app", [&]() { putRelease("1.4.1", zip, hexOf(zip)); idle(2); openCheck(); connect(); press(RIGHT); press(A); idle(2); SEE("can't update itself"); press(A); idle(2); panel(P_SYSTEM, P_POCKETS); quitFromPanel(); }, unchanged);
+    g_arg0 = NRO;
+    auto install = [&]() { putRelease("1.4.1", zip, hexOf(zip)); idle(2); openCheck(); connect(); press(RIGHT); press(A); idle(3); SEE("Install version 1.4.1?"); press(RIGHT); script.push_back({ A, nullptr }); };
+    auto installed = [&]() { untouched(); CHECK_SAME(slurp(sd("acnh_power_pockets.nro")), newNro); CHECK_SAME(slurp(sd("extra.txt")), extra); CHECK_SAME(slurp(sd("licenses/x.txt")), extra); };
+    launch(w, "install", install, [&]() { installed(); CHECK(net.nextLoad == NRO && net.nextArgs == std::string("\"") + NRO + "\""); CHECK_SAME(slurp(NRO_PREV), oldNro); });
+    launch(w, "first launch after", [&]() { SEE("Updated to version"); quitFromPanel(); }, [&]() { installed(); CHECK(!fileThere(NRO_PREV)); CHECK_SAME(slurp(sd("update/previous.nro")), oldNro); CHECK(net.urls.empty()); });
+    launch(w, "second launch", [&]() { NOT_SEE("Updated to version"); quitFromPanel(); }, installed);
+    // Back to 1.4.0, install again, and this time the user starts the previous version.
+    writeFile(dst + "acnh_power_pockets.nro", oldNro); remove((dst + "extra.txt").c_str()); remove((dst + "licenses/x.txt").c_str());
+    launch(w, "install again", install, installed);
+    g_arg0 = NRO_PREV;
+    launch(w, "previous version started", [&]() { SEE("previous version was put back"); quitFromPanel(); }, [&]() { unchanged(); CHECK(!fileThere(NRO_PREV) && !fileThere(sd("update/journal.txt"))); });
+    g_arg0 = "app";
+}
+
 // L / R wrap around the panels: L on Pockets opens System, R on System comes back.
 static void scnPanelsWrap(const Save& s0) {
     g_scn = "panels_wrap";
@@ -1057,6 +1146,7 @@ int main(int argc, char** argv) {
         { "read_only_save", [](const Save&) { scnReadOnly(); } },
         { "turnips_read_only", scnTurnips },
         { "panels_wrap", scnPanelsWrap },
+        { "update", scnUpdate },
         { "bag_slots", scnBag },
         { "launch_guards", scnGuards },
         { "review_revert_focus", scnReviewRevertFocus },

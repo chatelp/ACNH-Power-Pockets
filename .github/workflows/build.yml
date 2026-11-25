@@ -4,6 +4,14 @@ on:
   push:
   pull_request:
   workflow_dispatch:
+    # Test builds of the updater only (see README, Building and testing).
+    inputs:
+      app_version:
+        description: "Version to put in the build (empty: the one in the Makefile)"
+        default: ""
+      update_repo:
+        description: "Repository to look for updates in, owner/name (empty: this one)"
+        default: ""
 
 jobs:
   host-checks:
@@ -41,6 +49,9 @@ jobs:
           mkdir -p acdata
           curl -fsSL https://raw.githubusercontent.com/Norviah/animal-crossing/8bec58729a10879d575ba18d50a1dda74804a374/json/combined/Items.min.json -o acdata/Items.min.json
           python3 tools/make_item_collections.py acdata/Items.min.json --check
+      - name: zlib headers
+        run: test -f /usr/include/zlib.h || { sudo apt-get update && sudo apt-get install -y zlib1g-dev; }
+        timeout-minutes: 5
       - name: Host tests
         run: CXX=clang++ sh tests/host/run.sh
       # Real main.cpp on a fake console (synthetic save, injected failures).
@@ -56,15 +67,22 @@ jobs:
       # package downloads from CI runners (HTTP 403), so only check they are there.
       - name: Portlibs present
         run: |
-          for l in SDL2 SDL2_ttf freetype harfbuzz png16 bz2 z EGL glapi drm_nouveau; do
+          for l in SDL2 SDL2_ttf curl freetype harfbuzz png16 bz2 z EGL glapi drm_nouveau; do
             ls "$DEVKITPRO/portlibs/switch/lib/lib$l.a" || exit 1
           done
       - name: Build
-        run: make -j"$(nproc)"
+        env:
+          TEST_VERSION: ${{ inputs.app_version }}
+          TEST_REPO: ${{ inputs.update_repo }}
+        run: |
+          set --
+          [ -z "$TEST_VERSION" ] || set -- "$@" "APP_VERSION=$TEST_VERSION"
+          [ -z "$TEST_REPO" ] || set -- "$@" "UPDATE_REPO=$TEST_REPO"
+          make -j"$(nproc)" "$@"
       - name: Package (SD card layout)
         run: |
           mkdir -p dist/switch/acnh_power_pockets
-          cp acnh_power_pockets.nro icon.png dist/switch/acnh_power_pockets/
+          cp acnh_power_pockets.nro icon.png assets/author.png dist/switch/acnh_power_pockets/
           cp assets/font.ttf assets/items.txt assets/ui_icons.png assets/nonstackable.txt dist/switch/acnh_power_pockets/
           cp assets/item_glyphs.png assets/item_glyphs.txt assets/item_stacks.txt assets/item_collections.txt dist/switch/acnh_power_pockets/
           cp LICENSE THIRD_PARTY_NOTICES.md dist/switch/acnh_power_pockets/

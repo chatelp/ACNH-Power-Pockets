@@ -172,6 +172,8 @@ static const char* const SYS_DOCTOR    = "Save Doctor (repair save)";
 static const char* const SYS_DOCTOR_SUB = "Only if the game refuses to load the save";
 static const char* const SYS_RELOAD    = "Reload favorites and 1/slot rules";
 static const char* const SYS_RELOAD_SUB = "Re-read user_favorites.txt and nonstackable.txt";
+static const char* const SYS_ABOUT     = "About and updates";
+static const char* const SYS_ABOUT_SUB = "Version, author and credits";
 static const char* const SYS_QUIT      = "Quit";
 static const char* const SYS_QUIT_SUB  = "Asks first if changes are pending";
 static const char* const BLOCKED_FMT   = "Blocked: apply or discard the %d pending change%s first";
@@ -306,6 +308,57 @@ static const char* const STALE_BANNER  = "Stale integrity hash: the game would r
 static const char* const SPLASH_TITLE  = "Reading the save\xE2\x80\xA6";
 static const char* const SPLASH_HINT1  = "This takes a few seconds.";
 static const char* const SPLASH_HINT2  = "On a save with a stale integrity hash it can take several minutes. Please wait.";
+
+// About
+static const char* const AB_TITLE      = "About";
+static const char* const AB_AUTHOR     = "chatelp";
+static const char* const AB_URL        = "github.com/chatelp/ACNH-Power-Pockets";
+static const char* const AB_CREDITS[5][2] = {
+    { "Save engine", "ACNH Save Editor by cbreezy210 (MIT)" },
+    { "Item data", "NHSE by kwsch (GPL-3.0)" },
+    { "Collections", "ACNH data spreadsheet, via Norviah (MIT)" },
+    { "Turnips panel", "inspired by Turnips by averne" },
+    { "Font", "Varela Round (OFL 1.1)" },
+};
+static const char* const AB_NOTE       = "Not affiliated with Nintendo. Use at your own risk, offline.";
+static const char* const B_CHECK       = "Check for updates";
+static const char* const B_CLOSE       = "Close";
+
+// Updates (network only when asked; nothing here touches the save)
+static const char* const U_ASK_TITLE   = "Connect to GitHub?";
+static const char* const U_ASK_B1      = "The app will look for a newer version on github.com. It sends nothing about you or your save.";
+static const char* const U_ASK_B2      = "It never turns Wi-Fi on. On a console with custom firmware, going online is at your own risk.";
+static const char* const B_CONNECT     = "Connect";
+static const char* const U_ERR_TITLE   = "No update";
+static const char* const U_CHECKING    = "Checking for updates\xE2\x80\xA6";
+static const char* const U_DOWNLOADING = "Downloading the update\xE2\x80\xA6";
+static const char* const U_PREPARING   = "Checking the package\xE2\x80\xA6";
+static const char* const U_PROGRESS_HINT = "Nothing is installed yet. B cancels.";
+static const char* const U_UPTODATE_TITLE = "Up to date";
+static const char* const U_UPTODATE_FMT = "You have the latest version (%s).";
+static const char* const U_AVAIL_FMT   = "Version %s is available";
+static const char* const U_AVAIL_SIZE_FMT = "You have %s. Download: %.1f MB.";
+static const char* const U_BULLET      = "\xE2\x80\xA2 ";
+static const char* const B_NOT_NOW     = "Not now";
+static const char* const B_DOWNLOAD    = "Download";
+static const char* const U_PENDING     = "Apply or discard your pending changes first, then update.";
+static const char* const U_PLACE       = "This copy of the app isn't switch/acnh_power_pockets/acnh_power_pockets.nro, so it can't update itself. Download the new version from GitHub.";
+static const char* const U_READY_TITLE_FMT = "Install version %s?";
+static const char* const U_READY_B1    = "The app will close, replace its own files and start again.";
+static const char* const U_READY_B2    = "Your save, backups, loadouts and favorites are not touched. Don't turn off the console meanwhile.";
+static const char* const B_INSTALL     = "Install and restart";
+static const char* const U_CANCELLED   = "Update cancelled, nothing was installed";
+static const char* const U_E_OFFLINE   = "The console isn't connected to the internet. Connect it in the System Settings, or download the new version from GitHub on another device.";
+static const char* const U_E_TLS       = "The secure connection to GitHub couldn't be verified. Check the console's date and time, then try again.";
+static const char* const U_E_HTTP      = "GitHub didn't answer as expected. Try again later.";
+static const char* const U_E_LIMIT     = "GitHub is limiting requests from your connection. Try again in an hour.";
+static const char* const U_E_NETWORK   = "The connection was lost. Nothing was installed.";
+static const char* const U_E_RELEASE   = "The latest release can't be installed from the app. Download it from GitHub.";
+static const char* const U_E_CHECKSUM  = "The download is incomplete or damaged (wrong checksum). Nothing was installed.";
+static const char* const U_E_PACKAGE   = "The package isn't what this app expects. Nothing was installed. Download it from GitHub.";
+static const char* const U_E_SD        = "The SD card couldn't be written (full or damaged?). Nothing was installed.";
+static const char* const U_N_UPDATED_FMT = "Updated to version %s";
+static const char* const U_N_ROLLEDBACK = "The update didn't finish: the previous version was put back";
 
 // Info pane
 static const char* const INFO_TITLE    = "Info";

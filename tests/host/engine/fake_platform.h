@@ -17,7 +17,9 @@
 #include <cstddef>
 #include <deque>
 #include <functional>
+#include <map>
 #include <string>
+#include <vector>
 
 namespace fake {
 
@@ -40,6 +42,19 @@ struct Faults {
     bool        fontOpenFail = false;    // TTF_OpenFont returns nullptr (corrupted font)
 };
 extern Faults faults;
+
+// ---- network (fake_net.cpp) ----
+struct Net {
+    bool connected = true, socketFail = false, threadFail = false;
+    int  curlResult = 0;                 // CURLcode returned by every transfer
+    std::map<std::string, std::string> pages;        // address -> content
+    std::vector<std::string> urls;       // everything that was requested
+    bool unsafe = false;                 // a transfer without HTTPS-only + certificate checks
+    int  onlineChecks = 0, socketInits = 0, socketExits = 0;
+    long http = 0;
+    std::string nextLoad, nextArgs;      // envSetNextLoad
+};
+extern Net net;
 
 // ---- counters ----
 struct Counters {

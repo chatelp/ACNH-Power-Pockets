@@ -18,6 +18,8 @@
 // (checked by tools/check_engine_untouched.py); see docs/engine/AUDIT_ECRITURE.md.
 #include "pp_model.h"
 #include "pp_ui.h"
+#include "pp_net.h"
+#include "pp_strings.h"
 
 // ================= v1.2 DUAL-FILE SAVE ENGINE =================
 struct XorShift128 {
@@ -318,6 +320,31 @@ int main(int argc, char** argv) {
         printf("  Press [A] to exit.\n");
         consoleUpdate(NULL);
         
+        while (appletMainLoop()) {
+            padUpdate(&guard_pad);
+            if (padGetButtonsDown(&guard_pad) & HidNpadButton_A) break;
+            consoleUpdate(NULL);
+            svcSleepThread(16000000);
+        }
+        consoleExit(NULL);
+        return 0;
+    }
+
+    // --- Power Pockets: an update interrupted last time is finished or undone before any
+    // file of the app is opened (SD card only, see pp_update.h).
+    const std::string updDir = "sdmc:/switch/acnh_power_pockets/";
+    const std::string selfPath = (argc > 0 && argv && argv[0]) ? std::string(argv[0]) : std::string();
+    const pp::UpdatePaths updPaths(updDir);
+    pp::UpdateFs updFs;
+    const pp::RecoverResult updRecovered = pp::recoverUpdate(updFs, updPaths, selfPath == updPaths.previousNro());
+    if (updRecovered == pp::REC_FAILED) {
+        consoleClear();
+        printf("\x1b[31m\n\n  !! ACNH POWER POCKETS - UPDATE NOT FINISHED !!\x1b[0m\n\n");
+        printf("  The last update was interrupted and could not be undone (SD card problem?).\n");
+        printf("  Extract the release zip again over switch/acnh_power_pockets/ on the SD card,\n");
+        printf("  and delete the file update/journal.txt in that folder.\n\n");
+        printf("  Your save was not read or written. Press [A] to exit.\n");
+        consoleUpdate(NULL);
         while (appletMainLoop()) {
             padUpdate(&guard_pad);
             if (padGetButtonsDown(&guard_pad) & HidNpadButton_A) break;
@@ -881,6 +908,18 @@ int main(int argc, char** argv) {
     hooks.keyboard = [](const char* guide, const char* initial) { return showKeyboard(guide, initial); };
     hooks.reloadLists = reloadLists;
 
+    pp::UpdateService updater(updDir, hooks.version, selfPath == updPaths.nro());
+    hooks.updater = &updater;
+    if (updRecovered == pp::REC_PENDING_CONFIRM) {            // first launch after an update: it works, forget the old files
+        pp::confirmUpdate(updFs, updPaths);
+        char note[96];
+        snprintf(note, sizeof note, pp::S::U_N_UPDATED_FMT, hooks.version.c_str());
+        hooks.startupNote = note;
+    } else if (updRecovered == pp::REC_ROLLED_BACK) {
+        hooks.startupNote = pp::S::U_N_ROLLEDBACK;
+        hooks.startupWarn = true;
+    } else pp::discardDownload(updFs, updPaths);              // a package left by a crash
+
     ui.start(hooks);
     while (appletMainLoop()) {
         padUpdate(&pad);
@@ -888,6 +927,8 @@ int main(int argc, char** argv) {
         if (!ui.frame(k, held)) break;
     }
 
+    const bool installUpdateNow = ui.installRequested() && updater.state() == pp::UPD_READY;
+    updater.stop();
     ui.shutdown();
     TTF_Quit();
     if (personal) free(personal);
@@ -898,5 +939,31 @@ int main(int argc, char** argv) {
     if (origM) free(origM);
     if (R_SUCCEEDED(rc)) fsFsClose(&fs);
     SDL_DestroyRenderer(g_ren); SDL_DestroyWindow(win); SDL_Quit();
+
+    // Update: only now, with the save closed and every file of the app closed too.
+    if (installUpdateNow) {
+        consoleInit(NULL);
+        printf("\n\n  ACNH POWER POCKETS\n\n  Installing version %s...\n  Don't turn off the console.\n", updater.release().version.c_str());
+        consoleUpdate(NULL);
+        const pp::InstallResult ir = pp::installUpdate(updFs, updPaths, updater.files(), APP_VERSION_STR, updater.release().version);
+        if (ir == pp::INST_OK && envHasNextLoad()) {
+            const std::string next = updPaths.nro();
+            envSetNextLoad(next.c_str(), ("\"" + next + "\"").c_str());
+            consoleExit(NULL);
+            return 0;
+        }
+        if (ir == pp::INST_OK) printf("\n  Done. Start the app again from the Homebrew Menu.\n");
+        else if (ir == pp::INST_BROKEN) printf("\x1b[31m\n  The update failed. The app will try to undo it the next time it starts.\x1b[0m\n");
+        else printf("\x1b[31m\n  The update could not be installed. The current version is unchanged.\x1b[0m\n");
+        printf("  Your save was not touched. Press [A] to exit.\n");
+        consoleUpdate(NULL);
+        while (appletMainLoop()) {
+            padUpdate(&pad);
+            if (padGetButtonsDown(&pad) & HidNpadButton_A) break;
+            consoleUpdate(NULL);
+            svcSleepThread(16000000);
+        }
+        consoleExit(NULL);
+    }
     return 0;
 }

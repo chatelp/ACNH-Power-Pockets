@@ -100,6 +100,14 @@ for f in sorted((ROOT / "source").glob("pp_*")):
     failed |= not ok
     print(f"[{'OK ' if ok else 'FAIL'}] {f.name} never touches the engine" + ("" if ok else f": {bad}"))
 
+# The update code replaces the app's own files: it must not even know where a save is.
+for name in ("pp_update.h", "pp_update.cpp", "pp_net.h", "pp_net.cpp"):
+    code = re.sub(r"//[^\n]*|/\*.*?\*/", "", (ROOT / "source" / name).read_text(encoding="utf-8"), flags=re.S)
+    bad = [w for w in ("personal", "main.dat", "Villager", "fsOpen", "fsFs", "fsdev", "backup_", "SSL_VERIFYPEER, 0", "SSL_VERIFYHOST, 0", "http://") if w in code]
+    ok = not bad
+    failed |= not ok
+    print(f"[{'OK ' if ok else 'FAIL'}] {name} knows nothing of the save, and always checks certificates" + ("" if ok else f": {bad}"))
+
 print()
 print("ENGINE UNTOUCHED (apart from the SD folder name in its path strings)" if not failed else "ENGINE CHECK FAILED")
 print("Visual check of the moves: git diff -w --color-moved=zebra", REF, "-- source/main.cpp")

@@ -20,6 +20,12 @@ fi
 PP_TMP="$OUT" PP_ASSETS="$ROOT/assets" "$OUT/test_model"
 
 echo
+echo "== unit tests (pp_update) =="
+$CXX $FLAGS -O1 -g -fsanitize=address,undefined \
+    "$ROOT/source/pp_update.cpp" "$ROOT/tests/host/test_update.cpp" -lz -o "$OUT/test_update"
+PP_TMP="$OUT" "$OUT/test_update"
+
+echo
 echo "== syntax check against libnx / SDL2 stubs =="
 for f in "$ROOT"/source/*.cpp; do
     echo "  $(basename "$f")"

@@ -61,7 +61,7 @@ int main(int argc, char** argv) {
     const std::string root = argv[1];
     g_out = argv[2];
     const std::string sd = g_out + "/sd/";
-    const char* assets[] = { "font.ttf", "icon.png", "ui_icons.png", "nonstackable.txt", "item_glyphs.png", "item_glyphs.txt", "item_stacks.txt", "item_collections.txt" };
+    const char* assets[] = { "font.ttf", "icon.png", "ui_icons.png", "author.png", "nonstackable.txt", "item_glyphs.png", "item_glyphs.txt", "item_stacks.txt", "item_collections.txt" };
     for (const char* a : assets) copyFile((root + "/assets/" + a).c_str(), (sd + a).c_str());
 
     std::vector<Item> items;
@@ -113,7 +113,21 @@ int main(int argc, char** argv) {
     h.pockets = pockets; h.vals = vals; h.items = &items; h.favorites = &favs; h.stack = &stack; h.limits = &limits; h.glyphs = &glyphs;
     h.collections = &cols;
     h.saveReady = true; h.editSupported = true; h.loadoutNames = LOADOUT_NAMES; h.loadoutCount = 5;
-    h.sdDir = sd; h.version = "1.2.0";
+    h.sdDir = sd; h.version = "1.4.0";
+    struct NoUpdater : Updater {                             // only there so that the button shows
+        ReleaseInfo rel;
+        bool online() override { return false; }
+        bool canInstall() override { return false; }
+        void check() override {}
+        void download() override {}
+        void cancel() override {}
+        void discard() override {}
+        UpdateState state() override { return UPD_IDLE; }
+        int percent() override { return 0; }
+        UpdateError error() override { return UE_NONE; }
+        const ReleaseInfo& release() override { return rel; }
+    } upd;
+    h.updater = &upd;
     h.apply = [&]() { applied = true; return ER_OK; };
     h.restore = [&]() { return ER_OK; };
     TurnipWeek week; week.present = true; week.buy = 98; week.pattern = 1;
@@ -207,6 +221,9 @@ int main(int argc, char** argv) {
     settle(ui);
     press(ui, R); idle(ui);
     shot("system");
+    press(ui, DOWN, 4); press(ui, A); idle(ui);
+    shot("about");
+    press(ui, B); press(ui, UP, 4); idle(ui);
     press(ui, A); idle(ui);
     press(ui, RIGHT); idle(ui);
     for (int i = 0; i < 45; i++) { frame(ui, i == 0 ? A : 0, A); SDL_Delay(19); }   // ~0.9 s of the 1.5 s hold

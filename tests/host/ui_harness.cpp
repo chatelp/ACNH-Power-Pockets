@@ -58,6 +58,21 @@ static const char* FAV_NAMES[] = {
     "golden watering can", "crown (No Variations)", "royal crown (No Variations)" };
 static const char* LOADOUT_NAMES[] = { "Mining", "Fishing", "Terraforming", "Custom 1", "Custom 2" };
 
+struct FakeUpdater : Updater {
+    UpdateState st = UPD_IDLE; UpdateError err = UE_NONE; ReleaseInfo rel; bool on = true, place = true;
+    int pct = 0, checks = 0, downloads = 0, cancels = 0, discards = 0;
+    bool online() override { return on; }
+    bool canInstall() override { return place; }
+    void check() override { checks++; st = UPD_CHECKING; }
+    void download() override { downloads++; pct = 0; st = UPD_DOWNLOADING; }
+    void cancel() override { cancels++; st = UPD_CANCELLED; }
+    void discard() override { discards++; st = UPD_IDLE; }
+    UpdateState state() override { return st; }
+    int percent() override { return pct; }
+    UpdateError error() override { return err; }
+    const ReleaseInfo& release() override { return rel; }
+};
+
 int main(int argc, char** argv) {
     if (argc < 3) { printf("usage: ui_harness <repo-root> <out-dir>\n"); return 2; }
     std::string root = argv[1];
@@ -66,6 +81,7 @@ int main(int argc, char** argv) {
     copy(root + "/assets/font.ttf", sd + "font.ttf");
     copy(root + "/assets/icon.png", sd + "icon.png");
     copy(root + "/assets/ui_icons.png", sd + "ui_icons.png");
+    copy(root + "/assets/author.png", sd + "author.png");
     copy(root + "/assets/nonstackable.txt", sd + "nonstackable.txt");
     copy(root + "/assets/item_glyphs.png", sd + "item_glyphs.png");
     copy(root + "/assets/item_glyphs.txt", sd + "item_glyphs.txt");
@@ -123,7 +139,7 @@ int main(int argc, char** argv) {
     h.pockets = pockets; h.vals = vals; h.items = &items; h.favorites = &favs; h.stack = &stack; h.limits = &limits; h.glyphs = &glyphs;
     h.collections = &cols;
     h.saveReady = true; h.editSupported = true; h.loadoutNames = LOADOUT_NAMES; h.loadoutCount = 5;
-    h.sdDir = sd; h.version = "1.2.0 (harness)";
+    h.sdDir = sd; h.version = "1.4.0";
     h.apply = [&]() {
         applyCalls++;
         syncSaveSlotVars(pockets, gSlot, gNewId, gNewCount);
@@ -134,6 +150,8 @@ int main(int argc, char** argv) {
         return ER_OK;
     };
     h.restore = [&]() { restoreCalls++; return ER_OK; };
+    FakeUpdater upd;
+    h.updater = &upd;
     // Stalk Market as main.cpp would read it, and a fake console clock.
     TurnipWeek week; week.present = true; week.buy = 98; week.pattern = 1; week.saved = gd(2026, 11, 11, 9);
     { const uint32_t pr[14] = { 0, 0, 85, 80, 76, 72, 110, 160, 532, 201, 140, 90, 60, 50 }; memcpy(week.price, pr, sizeof pr); }
@@ -316,6 +334,49 @@ int main(int argc, char** argv) {
     frame(ui, 0, 0); idle(ui, 4);
     CHECK(restoreCalls == 1);
     shot("restored");
+
+    // About and updates (fake updater: no network here).
+    CHECK(upd.checks == 0);                                  // nothing on its own
+    press(ui, DOWN, 4); press(ui, A); idle(ui);
+    shot("about");
+    press(ui, LEFT); press(ui, A); idle(ui);
+    shot("update-ask");
+    press(ui, B); idle(ui);
+    CHECK(upd.checks == 0);
+    press(ui, A); idle(ui); press(ui, LEFT); press(ui, A); idle(ui); press(ui, RIGHT); press(ui, A); idle(ui);
+    shot("update-checking");
+    CHECK(upd.checks == 1);
+    press(ui, A); press(ui, PLUS); press(ui, MINUS); press(ui, R); idle(ui);      // only B does something now
+    CHECK(upd.cancels == 0);
+    upd.rel.version = "1.4.1"; upd.rel.size = 4101574;
+    upd.rel.highlights = { "Browse collections.", "Filter by type with ZL / ZR: All, Furniture, Walls, floors & rugs, Clothing, Other.", "X searches from any page of the Catalog." };
+    upd.st = UPD_AVAILABLE; idle(ui);
+    shot("update-available");
+    press(ui, RIGHT); press(ui, A); idle(ui);
+    CHECK(upd.downloads == 1);
+    upd.pct = 42; idle(ui);
+    shot("update-downloading");
+    press(ui, B); idle(ui);
+    CHECK(upd.cancels == 1);
+    shot("update-cancelled");
+    press(ui, A); idle(ui); press(ui, LEFT); press(ui, A); idle(ui); press(ui, RIGHT); press(ui, A); idle(ui);
+    upd.st = UPD_AVAILABLE; idle(ui); press(ui, RIGHT); press(ui, A); idle(ui);
+    upd.st = UPD_PREPARING; idle(ui);
+    upd.st = UPD_READY; idle(ui);
+    shot("update-install");
+    press(ui, A); idle(ui);                                  // "Not now" is focused
+    CHECK(upd.discards == 1 && !ui.installRequested());
+    const UpdateError errs[] = { UE_OFFLINE, UE_TLS, UE_HTTP, UE_LIMIT, UE_NETWORK, UE_RELEASE, UE_CHECKSUM, UE_PACKAGE, UE_SD };
+    for (UpdateError x : errs) {
+        press(ui, A); idle(ui); press(ui, LEFT); press(ui, A); idle(ui); press(ui, RIGHT); press(ui, A); idle(ui);
+        upd.err = x; upd.st = UPD_FAILED; idle(ui);
+        if (x == UE_TLS) shot("update-failed");
+        press(ui, A); idle(ui);
+    }
+    upd.on = false;
+    { int n = upd.checks; press(ui, A); idle(ui); press(ui, LEFT); press(ui, A); idle(ui); press(ui, RIGHT); press(ui, A); idle(ui); CHECK(upd.checks == n); press(ui, A); idle(ui); }
+    upd.on = true;
+    press(ui, UP, 4); idle(ui);
 
     // Discard: change, then minus.
     press(ui, L, 6); idle(ui);

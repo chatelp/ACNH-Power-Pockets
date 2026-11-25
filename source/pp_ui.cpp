@@ -91,7 +91,7 @@ struct ReviewRow {
     std::string target, before, after;
 };
 struct Modal {
-    enum Kind { MENU, STEPPER, DIALOG, REVIEW, WAIT } kind = MENU;
+    enum Kind { MENU, STEPPER, DIALOG, REVIEW, WAIT, PROGRESS } kind = MENU;
     std::string title, subtitle;
     // menu
     std::vector<MenuEntry> entries;
@@ -105,7 +105,7 @@ struct Modal {
     std::vector<std::string> body;
     std::vector<DialogButton> buttons;
     int safe = 0;
-    bool danger = false;
+    bool danger = false, about = false;
     uint32_t holdStart = 0;
     bool holdArmed = false;
     float holdProgress = 0.f;
@@ -113,6 +113,8 @@ struct Modal {
     std::vector<ReviewRow> rows;
     int rowFocus = -1;      // -1: in the button row
     int top = 0;
+    // progress
+    int percent = -1;       // -1: no bar
 };
 
 struct Hand { bool valid = false; uint16_t id = ID_EMPTY; int qty = 1; };
@@ -133,7 +135,7 @@ struct LoadoutInfo { bool exists = false, bad = false; int count = 0, slots = 0,
 struct Ui::Impl {
     SDL_Renderer* ren = nullptr;
     TTF_Font *fDisplay = nullptr, *fTitle = nullptr, *fBody = nullptr, *fSmall = nullptr, *fMicro = nullptr;
-    SDL_Texture *appIcon = nullptr, *icons = nullptr, *bgTex = nullptr;
+    SDL_Texture *appIcon = nullptr, *icons = nullptr, *bgTex = nullptr, *author = nullptr;
     SDL_Texture *glyphTex = nullptr;      // item_glyphs.png: 24x24 cells, rows = full color / tint mask / outlines
     int glyphCols = 0;
     bool glyphTintRows = false;
@@ -144,7 +146,7 @@ struct Ui::Impl {
     int panel = P_POCKETS;
     int focus[P_COUNT] = { 0 };
     Hand hand;
-    bool backupTrusted = true, tainted = false, sessionWritten = false, quit = false;
+    bool backupTrusted = true, tainted = false, sessionWritten = false, quit = false, install = false;
     bool armed = false;                   // false until the buttons held at launch are released
     std::string query;
     std::vector<int> catAll;              // Catalog source: search results or a collection, A-Z
@@ -1352,7 +1354,7 @@ struct Ui::Impl {
     }
 
     // -------------------------------- System -------------------------------
-    enum SysRow { SR_RESTORE, SR_SESSION, SR_DOCTOR, SR_RELOAD, SR_QUIT, SR_COUNT };
+    enum SysRow { SR_RESTORE, SR_SESSION, SR_DOCTOR, SR_RELOAD, SR_ABOUT, SR_QUIT, SR_COUNT };
     // Why a NAND action is blocked right now (empty = allowed). Invariants I5-I7, I9.
     std::string blockedReason(int row) {
         int n = pending();
@@ -1376,20 +1378,21 @@ struct Ui::Impl {
         int bx = 68;
         if (icons) { icon(IC_WARN, bx, 160); bx += 28; }
         text(fSmall, S::SYS_BANNER, C::warnInk, bx, 150 + (40 - fontH(fSmall)) / 2);
-        const char* titles[SR_COUNT] = { S::SYS_RESTORE, S::SYS_SESSION, S::SYS_DOCTOR, S::SYS_RELOAD, S::SYS_QUIT };
-        const char* subs[SR_COUNT] = { S::SYS_RESTORE_SUB, S::SYS_SESSION_SUB, S::SYS_DOCTOR_SUB, S::SYS_RELOAD_SUB, S::SYS_QUIT_SUB };
+        const char* titles[SR_COUNT] = { S::SYS_RESTORE, S::SYS_SESSION, S::SYS_DOCTOR, S::SYS_RELOAD, S::SYS_ABOUT, S::SYS_QUIT };
+        const char* subs[SR_COUNT] = { S::SYS_RESTORE_SUB, S::SYS_SESSION_SUB, S::SYS_DOCTOR_SUB, S::SYS_RELOAD_SUB, S::SYS_ABOUT_SUB, S::SYS_QUIT_SUB };
         int f = focus[P_SYSTEM];
         for (int i = 0; i < SR_COUNT; i++) {
             bool foc = i == f, danger = i <= SR_DOCTOR;
-            SDL_Rect r = doubleRow(i, 204, 600, foc, false);
+            SDL_Rect r = { LIST_X, 200 + i * 65, 600, 61 };          // 6 rows: a little tighter than doubleRow()
+            fillRound(r, 4, foc ? C::selectBg : (i % 2 ? C::panelAlt : C::panel));
             std::string why = danger ? blockedReason(i) : std::string();
             SDL_Color ink = foc ? C::selectInk : (danger ? C::error : C::textPrimary);
-            int w = text(fBody, titles[i], ink, r.x + 24, r.y + 6);
-            if (danger) badge(S::BADGE_WRITES, C::errorBg, C::errorInk, r.x + 24 + w + 12, r.y + 8);
+            int w = text(fBody, titles[i], ink, r.x + 24, r.y + 3);
+            if (danger) badge(S::BADGE_WRITES, C::errorBg, C::errorInk, r.x + 24 + w + 12, r.y + 6);
             if (!why.empty()) {
-                text(fSmall, why, foc ? C::selectInk : C::warnInk, r.x + 24, r.y + 36);
-                if (icons) icon(foc ? IC_LOCK_LIGHT : IC_LOCK, r.x + r.w - 36, r.y + 22);
-            } else text(fSmall, subs[i], foc ? C::selectInk : C::textSecond, r.x + 24, r.y + 36);
+                text(fSmall, why, foc ? C::selectInk : C::warnInk, r.x + 24, r.y + 32);
+                if (icons) icon(foc ? IC_LOCK_LIGHT : IC_LOCK, r.x + r.w - 36, r.y + 20);
+            } else text(fSmall, subs[i], foc ? C::selectInk : C::textSecond, r.x + 24, r.y + 32);
         }
         // Info pane (read-only diagnostics)
         SDL_Rect pv = { 680, 204, 544, 384 };
@@ -1442,8 +1445,137 @@ struct Ui::Impl {
                 if (e->favorites && e->favorites->ignoredLines())
                     setToast(T_WARN, fmt(S::T_FAV_IGNORED_FMT, e->favorites->ignoredLines(), plural(e->favorites->ignoredLines())));
                 break;
+            case SR_ABOUT: openAbout(); break;
             default: requestQuit(); break;
         }
+    }
+
+    // --------------------------- About and updates -------------------------
+    void openAbout() {
+        Modal m; m.kind = Modal::DIALOG; m.about = true; m.title = S::AB_TITLE;
+        if (e->updater) { DialogButton c; c.label = S::B_CHECK; c.run = [this]() { askUpdateCheck(); }; m.buttons.push_back(c); }
+        DialogButton x; x.label = S::B_CLOSE; m.buttons.push_back(x);
+        m.safe = m.focus = (int)m.buttons.size() - 1;
+        push(m);
+    }
+    void drawAbout(Modal& m) {
+        fill({ 0, 0, 1280, 640 }, C::veil);
+        SDL_Rect r = { 190, 104, 900, 440 };
+        boxFrame(r, C::wood);
+        fillRound({ r.x + 3, r.y + 3, r.w - 6, 53 }, 6, C::wood);
+        text(fTitle, m.title, C::selectInk, r.x + 24, r.y + 3 + (53 - fontH(fTitle)) / 2);
+        int tx = r.x + 32;
+        if (author) {                                                 // 48x48 drawing shown x4: whole pixels
+            fillRound({ r.x + 32, r.y + 84, 204, 204 }, 4, C::wood);
+            ops.push_back({ Op::TEX, { r.x + 38, r.y + 90, 192, 192 }, C::panel, author, { 0, 0, 0, 0 }, false, false });
+            textC(fBody, S::AB_AUTHOR, C::textPrimary, { r.x + 32, r.y + 294, 204, 36 });
+            tx = r.x + 268;
+        }
+        int y = r.y + 80;
+        std::string name = std::string(S::APP_TITLE) + " " + e->version;
+        if (!author) name += std::string(S::DOT) + S::AB_AUTHOR;
+        text(fBody, name, C::textPrimary, tx, y); y += 34;
+        text(fSmall, S::AB_URL, C::textSecond, tx, y); y += 42;
+        for (int i = 0; i < 5; i++, y += 30) {
+            text(fSmall, S::AB_CREDITS[i][0], C::textSecond, tx, y);
+            text(fSmall, S::AB_CREDITS[i][1], C::textPrimary, tx + 152, y);
+        }
+        text(fSmall, S::AB_NOTE, C::textSecond, tx, y + 10);
+        int x = r.x + 32;
+        for (size_t i = 0; i < m.buttons.size(); i++) {
+            int bw = textWidth(fBody, m.buttons[i].label) + 48;
+            dialogButton({ x, r.y + r.h - 72, bw, 48 }, m.buttons[i], (int)i == m.focus);
+            x += bw + 16;
+        }
+    }
+    void askUpdateCheck() {
+        Modal d; d.kind = Modal::DIALOG; d.title = S::U_ASK_TITLE; d.body.push_back(S::U_ASK_B1); d.body.push_back(S::U_ASK_B2);
+        DialogButton no; no.label = S::B_CANCEL;
+        DialogButton yes; yes.label = S::B_CONNECT;
+        yes.run = [this]() {
+            if (!e->updater->online()) { showError(S::U_E_OFFLINE, S::U_ERR_TITLE); return; }
+            e->updater->check();
+            pushProgress(S::U_CHECKING);
+        };
+        d.buttons.push_back(no); d.buttons.push_back(yes);
+        push(d);
+    }
+    void pushProgress(const char* title) {
+        Modal m; m.kind = Modal::PROGRESS; m.title = title; m.body.push_back(S::U_PROGRESS_HINT);
+        push(m);
+    }
+    void drawProgress(const Modal& m) {
+        fill({ 0, 0, 1280, 640 }, C::veil);
+        SDL_Rect r = { 360, 230, 560, 180 };
+        boxFrame(r, C::wood);
+        fillRound({ r.x + 3, r.y + 3, r.w - 6, 53 }, 6, C::wood);
+        text(fTitle, m.title, C::selectInk, r.x + 24, r.y + 3 + (53 - fontH(fTitle)) / 2);
+        SDL_Rect bar = { r.x + 24, r.y + 84, r.w - 48, 20 };
+        fillRound(bar, 4, C::sunken);
+        if (m.percent > 0) fillRound({ bar.x, bar.y, std::max(12, bar.w * std::min(100, m.percent) / 100), bar.h }, 4, C::selectBg);
+        if (!m.body.empty()) text(fSmall, m.body[0], C::textSecond, r.x + 24, r.y + 124);
+        if (m.percent >= 0) textR(fSmall, fmt("%d %%", std::min(100, m.percent)), C::textPrimary, r.x + r.w - 24, r.y + 124);
+    }
+    // Follows the worker thread while a progress box is open.
+    void pollUpdate() {
+        if (!e || !e->updater || modals.empty() || modals.back().kind != Modal::PROGRESS) return;
+        Modal& m = modals.back();
+        switch (e->updater->state()) {
+            case UPD_CHECKING: return;
+            case UPD_DOWNLOADING: { int p = e->updater->percent(); if (p != m.percent) { m.percent = p; dirty = true; } return; }
+            case UPD_PREPARING: if (m.title != S::U_PREPARING) { m.title = S::U_PREPARING; m.percent = 100; dirty = true; } return;
+            default: break;
+        }
+        popModal();
+        switch (e->updater->state()) {
+            case UPD_UP_TO_DATE: showError(fmt(S::U_UPTODATE_FMT, e->version.c_str()), S::U_UPTODATE_TITLE); break;
+            case UPD_AVAILABLE: showAvailable(); break;
+            case UPD_READY: askInstall(); break;
+            case UPD_CANCELLED: setToast(T_INFO, S::U_CANCELLED); break;
+            default: showError(updateErrorText(e->updater->error()), S::U_ERR_TITLE); break;
+        }
+    }
+    static const char* updateErrorText(UpdateError x) {
+        switch (x) {
+            case UE_OFFLINE: return S::U_E_OFFLINE;
+            case UE_TLS: return S::U_E_TLS;
+            case UE_HTTP: return S::U_E_HTTP;
+            case UE_LIMIT: return S::U_E_LIMIT;
+            case UE_RELEASE: return S::U_E_RELEASE;
+            case UE_CHECKSUM: return S::U_E_CHECKSUM;
+            case UE_PACKAGE: return S::U_E_PACKAGE;
+            case UE_SD: return S::U_E_SD;
+            default: return S::U_E_NETWORK;
+        }
+    }
+    void showAvailable() {
+        const ReleaseInfo& rel = e->updater->release();
+        Modal d; d.kind = Modal::DIALOG; d.title = fmt(S::U_AVAIL_FMT, rel.version.c_str());
+        d.body.push_back(fmt(S::U_AVAIL_SIZE_FMT, e->version.c_str(), rel.size / 1048576.0));
+        for (size_t i = 0; i < rel.highlights.size(); i++) d.body.push_back(fit(fBody, S::U_BULLET + rel.highlights[i], 660));
+        DialogButton no; no.label = S::B_NOT_NOW;
+        DialogButton go; go.label = S::B_DOWNLOAD;
+        go.run = [this]() {
+            if (!e->updater->canInstall()) { showError(S::U_PLACE, S::U_ERR_TITLE); return; }
+            if (pending() > 0) { blockedDialog(S::U_PENDING); return; }
+            e->updater->download();
+            pushProgress(S::U_DOWNLOADING);
+            modals.back().percent = 0;
+        };
+        d.buttons.push_back(no); d.buttons.push_back(go);
+        push(d);
+    }
+    void askInstall() {
+        Modal d; d.kind = Modal::DIALOG; d.title = fmt(S::U_READY_TITLE_FMT, e->updater->release().version.c_str());
+        d.body.push_back(S::U_READY_B1); d.body.push_back(S::U_READY_B2);
+        DialogButton no; no.label = S::B_NOT_NOW; no.run = [this]() { e->updater->discard(); setToast(T_INFO, S::U_CANCELLED); };
+        DialogButton go; go.label = S::B_INSTALL;
+        go.run = [this]() {
+            if (pending() > 0) { e->updater->discard(); blockedDialog(S::U_PENDING); return; }   // can't happen: the box is modal
+            install = true; quit = true;
+        };
+        d.buttons.push_back(no); d.buttons.push_back(go);
+        push(d);
     }
     void blockedDialog(const std::string& why) { showError(why, S::D_BLOCKED_TITLE); }
     static const char* backupText(BackupCheck c) {
@@ -1805,6 +1937,7 @@ struct Ui::Impl {
         text(fSmall, S::STEP_ACCEL, C::textSecond, r.x + 24, r.y + 212);
     }
     void drawDialog(Modal& m) {
+        if (m.about) { drawAbout(m); return; }
         fill({ 0, 0, 1280, 640 }, C::veil);
         int w = 720;
         int bodyLines = 0;
@@ -1862,6 +1995,7 @@ struct Ui::Impl {
                 case Modal::STEPPER: drawStepper(m); break;
                 case Modal::DIALOG: drawDialog(m); break;
                 case Modal::WAIT: drawWait(m); break;
+                case Modal::PROGRESS: drawProgress(m); break;
                 default: break;                                      // REVIEW is a full screen, drawn first
             }
         }
@@ -1925,6 +2059,8 @@ struct Ui::Impl {
             left.push_back({ "A", true, S::H_QUIT, false, false });
         } else if (top && top->kind == Modal::WAIT) {
             // nothing: the write is running
+        } else if (top && top->kind == Modal::PROGRESS) {
+            left.push_back({ "B", true, S::H_CANCEL, false, false });
         } else if (top && top->kind == Modal::MENU) {
             left.push_back({ "A", true, S::H_CHOOSE, false, false });
             left.push_back({ "B", true, S::H_CLOSE, false, false });
@@ -1934,7 +2070,7 @@ struct Ui::Impl {
         } else if (top && top->kind == Modal::DIALOG) {
             bool hold = top->focus < (int)top->buttons.size() && top->buttons[top->focus].hold;
             left.push_back({ "A", true, hold ? S::H_HOLD_A : S::H_CHOOSE, false, false });
-            left.push_back({ "B", true, S::H_CANCEL, false, false });
+            left.push_back({ "B", true, top->about ? S::H_CLOSE : S::H_CANCEL, false, false });
         } else if (top && top->kind == Modal::REVIEW) {
             left.push_back({ "A", true, S::H_CHOOSE, false, false });
             left.push_back({ "B", true, S::H_BACK, false, false });
@@ -2016,6 +2152,7 @@ struct Ui::Impl {
         Modal& m = modals.back();
         switch (m.kind) {
             case Modal::WAIT: return;
+            case Modal::PROGRESS: if (down & HidNpadButton_B) e->updater->cancel(); return;   // pollUpdate() closes the box
             case Modal::REVIEW: reviewInput(m, down, nav); return;
             case Modal::MENU: {
                 int n = (int)m.entries.size();
@@ -2166,6 +2303,7 @@ bool Ui::init(SDL_Renderer* ren, const std::string& sdDir) {
     d_->fMicro   = TTF_OpenFont(font.c_str(), 16);
     d_->appIcon  = loadPng(ren, sdDir + "icon.png");
     d_->icons    = loadPng(ren, sdDir + "ui_icons.png");      // optional, text fallbacks otherwise
+    d_->author   = loadPng(ren, sdDir + "author.png");        // optional, System > About
     int gw = 0, gh = 0;
     d_->glyphTex = loadPng(ren, sdDir + "item_glyphs.png", &gw, &gh);   // optional item pictures
     d_->glyphCols = d_->glyphTex ? gw / 24 : 0;
@@ -2197,6 +2335,7 @@ void Ui::start(EngineHooks& e) {
     if (d_->ready()) snapshotBase(d_->base, e.pockets, e.vals);
     if (e.favorites && e.favorites->ignoredLines())
         d_->setToast(T_WARN, fmt(S::T_FAV_IGNORED_FMT, e.favorites->ignoredLines(), plural(e.favorites->ignoredLines())));
+    if (!e.startupNote.empty()) d_->setToast(e.startupWarn ? T_WARN : T_OK, e.startupNote);
     d_->dirty = true;
 }
 
@@ -2220,6 +2359,7 @@ bool Ui::frame(uint64_t down, uint64_t held) {
         }
     } else {
         d.input(down, held);
+        d.pollUpdate();
     }
     if (!d.toast.empty() && SDL_GetTicks() > d.toastUntil) { d.toast.clear(); d.dirty = true; }
     // The Turnips panel follows the clock (AM/PM, day change): re-read it every 30 s.
@@ -2229,11 +2369,14 @@ bool Ui::frame(uint64_t down, uint64_t held) {
     return !d.quit;
 }
 
+bool Ui::installRequested() const { return d_ && d_->install; }
+
 void Ui::shutdown() {
     if (!d_) return;
     d_->clearOps();
     if (d_->appIcon) SDL_DestroyTexture(d_->appIcon);
     if (d_->icons) SDL_DestroyTexture(d_->icons);
+    if (d_->author) SDL_DestroyTexture(d_->author);
     if (d_->glyphTex) SDL_DestroyTexture(d_->glyphTex);
     TTF_Font* fonts[5] = { d_->fDisplay, d_->fTitle, d_->fBody, d_->fSmall, d_->fMicro };
     for (int i = 0; i < 5; i++) if (fonts[i]) TTF_CloseFont(fonts[i]);
