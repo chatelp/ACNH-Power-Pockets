@@ -57,6 +57,7 @@ private:
 // "Receive a list": sockets and the local server, only while the Receive screen is open.
 class ReceiveService : public Receiver {
 public:
+    explicit ReceiveService(const std::string& sdDir) : sdDir_(sdDir) {}
     ~ReceiveService() override { close(); }
     bool open(std::string& address, int& code, bool& offline) override;
     void close() override;
@@ -65,6 +66,7 @@ public:
     std::string error() override { return error_; }
 private:
     ReceiveServer server_;
+    std::string sdDir_;
     char error_[96] = "";
     bool sockets_ = false;
 };

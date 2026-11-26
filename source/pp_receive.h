@@ -3,6 +3,7 @@
 // open only while the Receive screen is shown.
 //
 // GET  /       a page to drop a catalogue.ac export or paste a share link
+// GET  /icon.png, /author.png, /font.ttf   the app's logo, the author's picture, the font (from the SD card)
 // POST /send   the text itself, with the code shown on the console (X-Code header)
 //
 // One request at a time, Connection: close, bodies up to LIST_TEXT_MAX. The code
@@ -32,6 +33,8 @@ public:
     int  received() const { return received_; }
     int  lastErrno() const { return errno_; }            // why start() failed
     bool lockedOut() const { return lockedOut_; }        // too many wrong codes: stopped
+    // Where /icon.png, /author.png and /font.ttf come from (exactly these names, nothing else).
+    void setFiles(const std::function<bool(const std::string& name, std::string& data)>& files) { files_ = files; }
     // Call once per frame. Never blocks. `nowMs` is any monotonic clock in milliseconds.
     void poll(uint32_t nowMs, const std::function<ReceiveReply(const std::string&)>& onText);
 private:
@@ -44,6 +47,7 @@ private:
     bool lockedOut_ = false;
     uint32_t clientSince_ = 0;
     std::string in_;
+    std::function<bool(const std::string&, std::string&)> files_;
 };
 
 // Exposed for tests: the request parser. NEED_MORE until the headers and the whole body

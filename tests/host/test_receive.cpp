@@ -78,9 +78,18 @@ static void testServer() {
     ReceiveServer s;
     CHECK(s.start(0, 4821) && s.running() && s.port() > 0);
     std::string page = talk(s, "GET / HTTP/1.1\r\nHost: x\r\n\r\n");
-    CHECK(page.compare(0, 15, "HTTP/1.1 200 OK") == 0 && page.find("Send a list to Power Pockets") != std::string::npos);
+    CHECK(page.compare(0, 15, "HTTP/1.1 200 OK") == 0 && page.find("<h1>Send a list</h1>") != std::string::npos && page.find("/send") != std::string::npos && page.find("X-Code") != std::string::npos);
     CHECK(page.find("http://") == std::string::npos && page.find("https://cdn") == std::string::npos);   // nothing from outside
     CHECK(talk(s, "GET /etc/passwd HTTP/1.1\r\n\r\n").compare(0, 12, "HTTP/1.1 404") == 0);
+    CHECK(talk(s, "GET /author.png HTTP/1.1\r\n\r\n").compare(0, 12, "HTTP/1.1 404") == 0);   // no file provider yet
+    s.setFiles([](const std::string& name, std::string& data) { if (name == "font.ttf") return false; data = "PNG:" + name; return true; });
+    std::string img = talk(s, "GET /author.png HTTP/1.1\r\n\r\n");
+    CHECK(img.compare(0, 15, "HTTP/1.1 200 OK") == 0 && img.find("Content-Type: image/png") != std::string::npos && img.find("PNG:author.png") != std::string::npos);
+    CHECK(talk(s, "GET /icon.png HTTP/1.1\r\n\r\n").find("PNG:icon.png") != std::string::npos);
+    CHECK(talk(s, "GET /font.ttf HTTP/1.1\r\n\r\n").compare(0, 12, "HTTP/1.1 404") == 0);   // missing on the SD card
+    CHECK(talk(s, "GET /items.txt HTTP/1.1\r\n\r\n").compare(0, 12, "HTTP/1.1 404") == 0);  // nothing else is served
+    CHECK(talk(s, "GET /../author.png HTTP/1.1\r\n\r\n").compare(0, 12, "HTTP/1.1 404") == 0);
+    CHECK(talk(s, "POST /author.png HTTP/1.1\r\nContent-Length: 0\r\n\r\n").compare(0, 12, "HTTP/1.1 404") == 0);
     CHECK(talk(s, "GET /send HTTP/1.1\r\n\r\n").compare(0, 12, "HTTP/1.1 404") == 0);
     CHECK(talk(s, "OPTIONS /send HTTP/1.1\r\nOrigin: https://evil.example\r\n\r\n").find("Access-Control") == std::string::npos);
     std::string r = talk(s, post("4821", "a good list"));

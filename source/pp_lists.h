@@ -15,6 +15,7 @@
 #pragma once
 
 #include <cstdint>
+#include <functional>
 #include <map>
 #include <string>
 #include <vector>
@@ -56,20 +57,33 @@ ListResult readListText(const std::string& text, const std::vector<Item>& items,
 
 struct ListFile {
     std::string file;                                    // name in the lists folder
-    std::vector<ImportedList> lists;
+    std::vector<ImportedList> lists;                     // without the lists a newer file replaces
     ListStats stats;
     ListResult result = LR_OK;
+    long mtime = 0;
 };
 
-// The folder sdmc:/switch/acnh_power_pockets/lists/: one file per export or link.
+// What the list still asks for once the pockets are counted (pending changes included):
+// each item minus what the pockets already hold of it, any variant. `isSingle` tells a
+// 1/slot item (one per slot, its quantity field is a variant) from a stack. `already` =
+// pieces of the list already in the pockets.
+std::vector<ListItem> stillNeeded(const ImportedList& list, const Pockets& pockets,
+                                  const std::function<bool(uint16_t)>& isSingle, int& already);
+
+// The folder sdmc:/switch/acnh_power_pockets/lists/. A list is known by its name: receiving
+// a list with the name of one already there replaces it, so sending a newer export again
+// simply updates the lists. Received lists are stored one per file, "<name>.json" (the
+// single-list format, game ids); files copied by hand (exports, links) are read as they are,
+// and when two files hold a list of the same name, the newer file wins.
 class ImportedLists {
 public:
     void load(const std::string& dir, const std::vector<Item>& items, const ClothingIds& clothing);
     const std::vector<ListFile>& files() const { return files_; }
     int listCount() const;
-    // Checks `text`, then saves it as list_NNN.json / .txt and reloads. `got` = what it holds.
+    // Checks `text`, then stores each of its lists and reloads. `got` = what it holds,
+    // `replaced` = how many of them replaced a list of the same name.
     ListResult add(const std::string& dir, const std::string& text, const std::vector<Item>& items,
-                   const ClothingIds& clothing, std::string& savedAs, std::vector<ImportedList>& got, ListStats& stats);
+                   const ClothingIds& clothing, std::vector<ImportedList>& got, ListStats& stats, int& replaced);
     bool remove(const std::string& dir, const std::string& file, const std::vector<Item>& items, const ClothingIds& clothing);
 private:
     std::vector<ListFile> files_;

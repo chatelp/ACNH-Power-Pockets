@@ -67,7 +67,7 @@ enum ToastKind { T_OK, T_INFO, T_WARN, T_ERR };
 enum Icon { IC_STAR = 0, IC_CHECK, IC_WARN, IC_LOCK, IC_LOCK_LIGHT, IC_CROSS };
 
 static std::string fmt(const char* f, ...) {
-    char buf[512];
+    char buf[1024];
     va_list ap; va_start(ap, f); vsnprintf(buf, sizeof buf, f, ap); va_end(ap);
     return buf;
 }
@@ -851,7 +851,7 @@ struct Ui::Impl {
             CollectionGroup u; u.name = S::GRP_YOUR_LISTS;
             if (e->receiver) { Collection rx; rx.name = S::RX_ENTRY; u.list.push_back(rx); userEntries.push_back({ 0, "", -1 }); }
             for (const ListFile& f : e->lists->files()) {
-                if (f.lists.empty()) { Collection bad; bad.name = fmt(S::LIST_BAD_FMT, f.file.c_str()); u.list.push_back(bad); userEntries.push_back({ 2, f.file, -1 }); continue; }
+                if (f.result != LR_OK) { Collection bad; bad.name = fmt(S::LIST_BAD_FMT, f.file.c_str()); u.list.push_back(bad); userEntries.push_back({ 2, f.file, -1 }); continue; }
                 for (size_t i = 0; i < f.lists.size(); i++) {
                     Collection c; c.name = f.lists[i].name;
                     for (const ListItem& it : f.lists[i].items) c.ids.push_back(it.id);
@@ -1053,11 +1053,15 @@ struct Ui::Impl {
         m.anchor = { 56, LIST_Y + ROW_PITCH, 600, ROW_H };
         push(m);
     }
-    // Slots this list would take: each item fills slots of at most its stack, in list order.
-    int listSlots(const ImportedList& l, bool& variants) const {
+    // What the list still needs once the pockets are counted (pending changes included).
+    std::vector<ListItem> listNeeds(const ImportedList& l, int& already) const {
+        return stillNeeded(l, e->pockets, [this](uint16_t id) { return single(id); }, already);
+    }
+    // Slots these items would take: each fills slots of at most its stack, in list order.
+    int listSlots(const std::vector<ListItem>& need, bool& variants) const {
         int n = 0;
         variants = false;
-        for (const ListItem& it : l.items) {
+        for (const ListItem& it : need) {
             const int cap = std::max(1, maxQty(it.id));
             n += (it.qty + cap - 1) / cap;
             variants |= single(it.id);
@@ -1068,13 +1072,17 @@ struct Ui::Impl {
         if (!canEdit()) return;
         const ImportedList* l = userList(g, c);
         if (!l) return;
+        int already = 0;
+        const std::vector<ListItem> needs = listNeeds(*l, already);
+        if (needs.empty()) { setToast(T_INFO, S::T_LFILL_DONE); return; }
         const int empty = countEmpty(e->pockets);
         if (empty == 0) { setToast(T_WARN, S::T_FULL); return; }
         bool furniture = false;
-        const int need = listSlots(*l, furniture);
+        const int need = listSlots(needs, furniture);
         Modal d; d.kind = Modal::DIALOG; d.title = fmt(S::D_LFILL_TITLE_FMT, fit(fTitle, l->name, 420).c_str());
         const int used = std::min(empty, need);
         d.body.push_back(fmt(S::D_LFILL_BODY_FMT, used, plural(used)));
+        if (already > 0) d.body.push_back(fmt(S::D_LFILL_HAVE_FMT, already, plural(already)));
         if (need > empty) d.body.push_back(fmt(S::D_LFILL_SHORT_FMT, need - empty, plural(need - empty)));
         if (furniture) d.body.push_back(S::D_LFILL_VARIANT);
         DialogButton no; no.label = S::B_NO;
@@ -1082,8 +1090,8 @@ struct Ui::Impl {
         yes.run = [this, g, c]() {
             const ImportedList* l2 = userList(g, c);
             if (!l2 || !canEdit()) return;
-            int filled = 0, from = 1;
-            for (const ListItem& it : l2->items) {
+            int filled = 0, from = 1, have = 0;
+            for (const ListItem& it : listNeeds(*l2, have)) {
                 const int cap = std::max(1, maxQty(it.id));
                 for (int left = it.qty; left > 0;) {
                     const int s = nextEmptySlot(e->pockets, from);
@@ -1101,7 +1109,7 @@ struct Ui::Impl {
     void confirmDeleteListFile(const std::string& file) {
         int lists = 0;
         bool readable = false;
-        for (const ListFile& f : e->lists->files()) if (f.file == file) { lists = (int)f.lists.size(); readable = !f.lists.empty(); }
+        for (const ListFile& f : e->lists->files()) if (f.file == file) { lists = (int)f.lists.size(); readable = f.result == LR_OK; }
         Modal d; d.kind = Modal::DIALOG; d.title = fmt(S::D_LDEL_TITLE_FMT, file.c_str());
         d.body.push_back(readable ? fmt(S::D_LDEL_BODY_FMT, lists, plural(lists)) : std::string(S::D_LDEL_BAD));
         DialogButton no; no.label = S::B_NO;
@@ -1131,15 +1139,29 @@ struct Ui::Impl {
         push(m);
     }
     ReceiveReply received(const std::string& text, Modal& m) {
-        std::string saved; std::vector<ImportedList> got; ListStats st;
-        const ListResult r = e->lists->add(e->listsDir, text, items(), *e->clothing, saved, got, st);
+        std::vector<ImportedList> got; ListStats st;
+        int replaced = 0;
+        const ListResult r = e->lists->add(e->listsDir, text, items(), *e->clothing, got, st, replaced);
         if (r != LR_OK) return { false, r == LR_EMPTY ? S::RX_EMPTY : r == LR_SD ? S::RX_SD : S::RX_NOT_LIST };
-        const int n = (int)got[0].items.size();
-        std::string msg = fmt(S::RX_OK_FMT, got[0].name.c_str(), n, plural(n));
-        if (got.size() > 1) msg += fmt(S::RX_MORE_FMT, (int)got.size() - 1, plural((int)got.size() - 1));
+        std::string msg;
+        if (got.size() == 1) {
+            const int n = (int)got[0].items.size();
+            msg = fmt(replaced ? S::RX_UPD_FMT : S::RX_OK_FMT, got[0].name.c_str(), n, plural(n));
+            m.status = fmt(replaced ? S::RX_UPDATED_FMT : S::RX_GOT_FMT, got[0].name.c_str(), n, plural(n));
+        } else {                                          // an export: say every list it brought
+            std::string names, short_;
+            for (size_t i = 0; i < got.size(); i++) {
+                const int n = (int)got[i].items.size();
+                if (i < 6) names += (i ? ", " : "") + fmt(S::RX_LIST_FMT, got[i].name.c_str(), n, plural(n));
+                if (i < 3) short_ += (i ? ", " : "") + got[i].name;
+            }
+            if (got.size() > 6) names += fmt(S::RX_AND_MORE_FMT, (int)got.size() - 6);
+            if (got.size() > 3) short_ += fmt(S::RX_AND_MORE_FMT, (int)got.size() - 3);
+            msg = fmt(S::RX_OK_MANY_FMT, (int)got.size(), names.c_str());
+            if (replaced) msg += fmt(S::RX_REPLACED_FMT, replaced, plural(replaced));
+            m.status = fmt(S::RX_GOT_MANY_FMT, (int)got.size(), short_.c_str());
+        }
         if (st.skipped()) msg += fmt(S::RX_SKIPPED_FMT, st.skipped(), st.skipped() == 1 ? "y" : "ies");
-        m.status = fmt(S::RX_GOT_FMT, got[0].name.c_str(), n, plural(n));
-        if (got.size() > 1) m.status += fmt(S::RX_MORE_FMT, (int)got.size() - 1, plural((int)got.size() - 1));
         rebuildGroups();
         setToast(T_OK, m.status);
         return { true, msg };
@@ -2263,7 +2285,13 @@ struct Ui::Impl {
             left.push_back({ "A", true, S::H_CHOOSE, false, false });
             left.push_back({ "B", true, S::H_BACK, false, false });
         } else if (panel == P_CATALOG && browsing && collectionsOn()) {
-            left.push_back({ "A", true, S::H_OPEN, false, false });
+            // On one of your lists, A opens its menu and Y opens the list; elsewhere A opens.
+            const std::vector<CollRef> L = collFlat();
+            const int f = std::max(0, std::min(browseFocus, (int)L.size() - 1));
+            if (!L.empty() && userList(L[f].g, L[f].c)) {
+                left.push_back({ "A", true, S::H_ACTIONS, false, false });
+                left.push_back({ "Y", true, S::H_OPEN, false, false });
+            } else left.push_back({ "A", true, S::H_OPEN, false, false });
             left.push_back({ "B", true, S::H_BACK, false, false });
             right.push_back({ "L", false, "", false, false });
             right.push_back({ "R", false, S::H_PANEL, false, false });

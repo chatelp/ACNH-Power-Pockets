@@ -3,6 +3,7 @@
 #include "pp_json.h"
 
 #include <algorithm>
+#include <map>
 #include <cstdio>
 #include <cctype>
 #include <cstdlib>
@@ -242,6 +243,28 @@ ListResult readListText(const std::string& text, const std::vector<Item>& items,
     return out.empty() ? LR_EMPTY : LR_OK;
 }
 
+// ------------------------------- still needed ------------------------------
+std::vector<ListItem> stillNeeded(const ImportedList& list, const Pockets& pockets,
+                                  const std::function<bool(uint16_t)>& isSingle, int& already) {
+    std::map<uint16_t, int> have;
+    for (int s = 1; s <= pockets.count; s++) {
+        if (!pockets.valid(s)) continue;
+        const SlotRec r = readSlot(pockets, s);
+        if (r.id == ID_EMPTY) continue;
+        have[r.id] += isSingle(r.id) ? 1 : rawToQty(r.raw);
+    }
+    std::vector<ListItem> out;
+    already = 0;
+    for (const ListItem& it : list.items) {
+        int& h = have[it.id];
+        const int used = std::min(h, it.qty);
+        h -= used;                                       // an item listed twice is not counted twice
+        already += used;
+        if (it.qty > used) out.push_back({ it.id, it.qty - used });
+    }
+    return out;
+}
+
 // ---------------------------------- folder ---------------------------------
 namespace {
 bool readAll(const std::string& path, std::string& out) {
@@ -267,6 +290,43 @@ bool listName(const std::string& n) {
     for (char c : n) if (c == '/' || c == '\\') return false;
     return true;
 }
+std::string slugOf(const std::string& name) {
+    std::string s;
+    for (unsigned char c : name) {
+        if (isalnum(c) && c < 0x80) s += (char)tolower(c);
+        else if (!s.empty() && s.back() != '-') s += '-';
+    }
+    while (!s.empty() && s.back() == '-') s.pop_back();
+    if (s.size() > 40) s.resize(40);
+    return s.empty() ? std::string("list") : s;
+}
+std::string jsonString(const std::string& v) {
+    std::string o = "\"";
+    for (unsigned char c : v) {
+        if (c == '"' || c == '\\') { o += '\\'; o += (char)c; }
+        else if (c < 0x20) { char u[8]; snprintf(u, sizeof u, "\\u%04x", c); o += u; }
+        else o += (char)c;
+    }
+    return o + "\"";
+}
+// The stored form of a received list: catalogue.ac's single-list format, with game ids.
+std::string listJson(const ImportedList& l) {
+    std::string o = "{\"name\":" + jsonString(l.name) + ",\"items\":{";
+    for (size_t i = 0; i < l.items.size(); i++) o += (i ? "," : "") + jsonString(std::to_string(l.items[i].id)) + ":" + std::to_string(l.items[i].qty);
+    return o + "}}\n";
+}
+bool writeFile(const std::string& path, const std::string& data) {
+    const std::string tmp = path + ".tmp";
+    FILE* f = fopen(tmp.c_str(), "wb");
+    if (!f) return false;
+    bool ok = fwrite(data.data(), 1, data.size(), f) == data.size();
+    ok = fclose(f) == 0 && ok;
+    struct stat st;
+    if (ok && stat(path.c_str(), &st) == 0) ok = ::remove(path.c_str()) == 0;   // replace (libnx rename doesn't overwrite)
+    ok = ok && ::rename(tmp.c_str(), path.c_str()) == 0;
+    if (!ok) ::remove(tmp.c_str());
+    return ok;
+}
 } // namespace
 
 void ImportedLists::load(const std::string& dir, const std::vector<Item>& items, const ClothingIds& clothing) {
@@ -281,9 +341,31 @@ void ImportedLists::load(const std::string& dir, const std::vector<Item>& items,
     for (const std::string& n : names) {
         ListFile f;
         f.file = n;
+        struct stat st;
+        if (stat((dir + "/" + n).c_str(), &st) == 0) f.mtime = (long)st.st_mtime;
         std::string text;
         f.result = readAll(dir + "/" + n, text) ? readListText(text, items, clothing, f.lists, f.stats) : LR_TOO_BIG;
         files_.push_back(f);
+    }
+    // One list per name: the newer file wins; on a tie, the file named after the list.
+    std::map<std::string, std::pair<size_t, size_t> > best;
+    auto better = [&](size_t a, size_t b, const std::string& name) {      // file a beats file b?
+        if (files_[a].mtime != files_[b].mtime) return files_[a].mtime > files_[b].mtime;
+        return files_[a].file == slugOf(name) + ".json";
+    };
+    for (size_t fi = 0; fi < files_.size(); fi++)
+        for (size_t li = 0; li < files_[fi].lists.size(); li++) {
+            const std::string& nm = files_[fi].lists[li].name;
+            auto it = best.find(nm);
+            if (it == best.end() || better(fi, it->second.first, nm)) best[nm] = std::make_pair(fi, li);
+        }
+    for (size_t fi = 0; fi < files_.size(); fi++) {
+        std::vector<ImportedList> keep;
+        for (size_t li = 0; li < files_[fi].lists.size(); li++) {
+            auto it = best.find(files_[fi].lists[li].name);
+            if (it != best.end() && it->second.first == fi && it->second.second == li) keep.push_back(files_[fi].lists[li]);
+        }
+        files_[fi].lists.swap(keep);
     }
 }
 int ImportedLists::listCount() const {
@@ -292,29 +374,51 @@ int ImportedLists::listCount() const {
     return n;
 }
 ListResult ImportedLists::add(const std::string& dir, const std::string& text, const std::vector<Item>& items,
-                              const ClothingIds& clothing, std::string& savedAs, std::vector<ImportedList>& got, ListStats& stats) {
-    savedAs.clear();
+                              const ClothingIds& clothing, std::vector<ImportedList>& got, ListStats& stats, int& replaced) {
+    replaced = 0;
     const ListResult r = readListText(text, items, clothing, got, stats);
     if (r != LR_OK) return r;
     struct stat st;
     if (stat(dir.c_str(), &st) != 0 && mkdir(dir.c_str(), 0777) != 0) return LR_SD;
-    const bool json = text.find_first_not_of(" \t\r\n") != std::string::npos && text[text.find_first_not_of(" \t\r\n")] == '{';
-    for (int i = 1; i < 1000; i++) {
-        char name[32];
-        snprintf(name, sizeof name, "list_%03d.", i);
-        if (stat((dir + "/" + name + "json").c_str(), &st) == 0 || stat((dir + "/" + name + "txt").c_str(), &st) == 0) continue;
-        snprintf(name, sizeof name, "list_%03d.%s", i, json ? "json" : "txt");
-        const std::string path = dir + "/" + name;
-        FILE* f = fopen(path.c_str(), "wb");
-        if (!f) return LR_SD;
-        bool ok = fwrite(text.data(), 1, text.size(), f) == text.size();
-        ok = fclose(f) == 0 && ok;
-        if (!ok) { ::remove(path.c_str()); return LR_SD; }
-        savedAs = name;
-        load(dir, items, clothing);
-        return LR_OK;
+    // Two lists of the same name in one export: the second becomes "Name (2)".
+    for (size_t i = 0; i < got.size(); i++)
+        for (int k = 2, again = 1; again && k < 100; k++) {
+            again = 0;
+            for (size_t j = 0; j < i; j++) if (got[j].name == got[i].name) { got[i].name = got[i].name.substr(0, 54) + " (" + std::to_string(k) + ")"; again = 1; break; }
+        }
+    std::map<std::string, std::string> owner;            // file -> name of the list it holds now
+    std::vector<std::string> known;
+    for (const ListFile& f : files_) {
+        if (f.lists.size() == 1) owner[f.file] = f.lists[0].name;
+        for (const ImportedList& l : f.lists) known.push_back(l.name);
     }
-    return LR_SD;
+    std::vector<std::string> written;
+    for (const ImportedList& l : got) {
+        if (std::find(known.begin(), known.end(), l.name) != known.end()) replaced++;
+        std::string file;
+        for (int k = 1; k < 100; k++) {                  // "<slug>.json", or "<slug>-2.json" if another list has that name
+            file = slugOf(l.name) + (k > 1 ? "-" + std::to_string(k) : std::string()) + ".json";
+            if (std::find(written.begin(), written.end(), file) != written.end()) continue;
+            auto o = owner.find(file);
+            if (o == owner.end() || o->second == l.name) break;
+            if (stat((dir + "/" + file).c_str(), &st) != 0) break;
+        }
+        if (!writeFile(dir + "/" + file, listJson(l))) { load(dir, items, clothing); return LR_SD; }
+        written.push_back(file);
+    }
+    // Files that only held lists replaced just now are gone for good (an older export, say).
+    for (const ListFile& f : files_) {
+        if (f.result != LR_OK || f.lists.empty() || std::find(written.begin(), written.end(), f.file) != written.end()) continue;
+        bool all = true;
+        for (const ImportedList& l : f.lists) {
+            bool in = false;
+            for (const ImportedList& g : got) in |= g.name == l.name;
+            all &= in;
+        }
+        if (all) ::remove((dir + "/" + f.file).c_str());
+    }
+    load(dir, items, clothing);
+    return LR_OK;
 }
 bool ImportedLists::remove(const std::string& dir, const std::string& file, const std::vector<Item>& items, const ClothingIds& clothing) {
     if (!listName(file)) return false;

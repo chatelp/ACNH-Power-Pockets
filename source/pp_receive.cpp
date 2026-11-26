@@ -20,55 +20,132 @@ static const size_t HEADER_MAX = 8192;
 static const uint32_t CLIENT_TIMEOUT_MS = 20000;
 static const int WRONG_CODES_MAX = 5;
 
-// The page is all inline: no outside resource, nothing loaded from the internet.
+// The page is all inline: nothing loaded from the internet. Its pictures and font come from
+// this same server (/icon.png, /author.png, /font.ttf). Designed in docs/design/receive-page.html.
 static const char* const PAGE = R"PAGE(<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Power Pockets - send a list</title>
+<meta name="color-scheme" content="light dark">
+<title>Send a list · Power Pockets</title>
 <style>
-body{margin:0;background:#7AC143;font:16px/1.45 system-ui,sans-serif;color:#5A4029}
-main{max-width:560px;margin:24px auto;background:#F8F5EC;border-radius:10px;overflow:hidden;box-shadow:6px 6px 0 #5C4430}
-h1{margin:0;padding:14px 20px;background:#7A5C3E;color:#F8F5EC;font-size:20px}
-section{padding:16px 20px}
-label{display:block;font-weight:600;margin:12px 0 6px}
-input,textarea{box-sizing:border-box;width:100%;font:inherit;padding:10px;border:2px solid #7A5C3E;border-radius:6px;background:#fff;color:#3B2A1A}
-#code{font-size:28px;letter-spacing:8px;width:9ch;text-align:center}
-textarea{height:90px}
-button{margin-top:16px;width:100%;padding:12px;font:inherit;font-weight:700;border:0;border-radius:6px;background:#3F7A2E;color:#F8F5EC}
-button:disabled{opacity:.5}
-#out{margin-top:14px;padding:10px 12px;border-radius:6px;display:none}
-.ok{background:#E3F1E0;color:#256B29}.err{background:#F9E1DD;color:#A32F23}
-small{color:#7A5C3E}
-</style></head><body><main>
-<h1>Send a list to Power Pockets</h1>
-<section>
-<p>On <b>catalogue.ac</b>: menu &rsaquo; <i>Export</i> gives a file; a list's share button gives a link. Send either one here.</p>
-<label for="code">Code shown on the console</label>
-<input id="code" inputmode="numeric" maxlength="4" autocomplete="off">
-<label for="file">Export file (.json)</label>
-<input id="file" type="file" accept=".json,application/json,text/plain">
-<label for="link">or a share link</label>
-<textarea id="link" placeholder="https://catalogue.ac/?l=..."></textarea>
-<button id="send">Send to the console</button>
-<div id="out"></div>
-<p><small>This page is served by your Switch, on your own network. Nothing goes to the internet, and the console's save is not changed: the list only appears in the Catalog.</small></p>
-</section></main>
+@font-face{font-family:PP;src:url(/font.ttf) format("truetype");font-display:swap}
+:root{--bg:#7AC143;--dot:#6FB739;--card:#F8F5EC;--ink:#5A4029;--ink2:#7A5C3E;--strong:#3B2A1A;--wood:#7A5C3E;--edge:#5C4430;--head:#F8F5EC;--sunk:#E6DCC3;--alt:#F1EBDD;--field:#FFFDF8;--btn:#3F7A2E;--btnink:#F8F5EC;--amber:#E8A33D;--okbg:#E3F1E0;--ok:#256B29;--errbg:#F9E1DD;--err:#A32F23;--link:#3F7A2E}
+@media (prefers-color-scheme:dark){:root{--bg:#22301A;--dot:#2A3B20;--card:#2A1E12;--ink:#EADFC8;--ink2:#C2AE8C;--strong:#FBF6EA;--wood:#4A3726;--edge:#100B06;--sunk:#3A2B1D;--alt:#33251A;--field:#1E150D;--okbg:#1F3A1C;--ok:#A8DB97;--errbg:#47211B;--err:#F7ADA2;--link:#9BD36A}}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;min-height:100vh;padding:20px 16px 28px;background:var(--bg) radial-gradient(var(--dot) 4px,transparent 4.6px) 0 0/32px 32px;color:var(--ink);font:17px/1.45 PP,ui-rounded,"Varela Round","Nunito",system-ui,sans-serif}
+main{max-width:560px;margin:0 auto;background:var(--card);border:3px solid var(--edge);border-radius:16px;box-shadow:6px 6px 0 var(--edge);overflow:hidden}
+header{display:flex;align-items:center;gap:14px;padding:14px 18px;background:var(--wood);color:var(--head)}
+header img{width:56px;height:56px;border-radius:12px;flex:none}
+h1{margin:0;font-size:22px;line-height:1.2;font-weight:400}
+header p{margin:2px 0 0;font-size:15px;opacity:.85}
+.in{padding:18px 18px 6px}
+.lead{margin:0 0 6px}
+ol{list-style:none;margin:0;padding:0}
+ol>li{position:relative;padding:16px 0;border-top:2px dashed var(--sunk)}
+ol>li:first-child{border-top:0}
+ol>li::before{counter-increment:s;content:counter(s);position:absolute;left:0;top:14px;width:32px;height:32px;border-radius:50%;background:var(--amber);color:#3B2A1A;display:grid;place-items:center;font-size:17px}
+ol{counter-reset:s}
+h2{margin:4px 0 12px 44px;min-height:26px;font-size:18px;font-weight:400;color:var(--strong)}
+.hint{margin:8px 0 0;font-size:14px;color:var(--ink2)}
+input,button{font:inherit;color:inherit}
+#code{display:block;width:100%;max-width:13rem;padding:8px 0 8px .6em;font-size:32px;letter-spacing:.6em;text-align:center;background:var(--field);border:2px solid var(--ink2);border-radius:10px;color:var(--strong);font-variant-numeric:tabular-nums}
+#code::placeholder{color:var(--sunk);letter-spacing:.6em}
+#link{width:100%;padding:11px 12px;background:var(--field);border:2px solid var(--ink2);border-radius:10px;font-size:16px;color:var(--strong)}
+input:focus-visible,button:focus-visible,.zone:focus-within,a:focus-visible{outline:3px solid var(--amber);outline-offset:2px}
+.zone{display:flex;flex-direction:column;align-items:center;gap:4px;padding:22px 14px;border:2px dashed var(--ink2);border-radius:12px;background:var(--alt);text-align:center;cursor:pointer}
+.zone.over{border-style:solid;border-color:var(--btn);background:var(--okbg)}
+.zone svg{width:34px;height:34px;color:var(--ink2)}
+.zone b{font-weight:400;color:var(--strong)}
+.zone span{font-size:14px;color:var(--ink2)}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+.chip{display:flex;align-items:center;gap:10px;padding:10px 12px;border:2px solid var(--btn);border-radius:12px;background:var(--okbg);color:var(--ok)}
+.chip div{flex:1;min-width:0}
+.chip b{display:block;font-weight:400;overflow-wrap:anywhere;color:var(--strong)}
+.chip span{font-size:14px}
+.ghost{flex:none;padding:6px 10px;border:2px solid var(--ink2);border-radius:8px;background:transparent;cursor:pointer;font-size:15px}
+.or{display:flex;align-items:center;gap:10px;margin:12px 0 8px;font-size:14px;color:var(--ink2)}
+.or::before,.or::after{content:"";flex:1;border-top:2px solid var(--sunk)}
+#send{width:100%;padding:14px;border:0;border-radius:12px;background:var(--btn);color:var(--btnink);font-size:19px;cursor:pointer;box-shadow:0 4px 0 #2B5620}
+#send:active{transform:translateY(2px);box-shadow:0 2px 0 #2B5620}
+#send:disabled{opacity:.6;cursor:wait}
+#out{display:flex;gap:12px;align-items:flex-start;margin:4px 0 16px;padding:14px;border-radius:12px;border:2px solid}
+#out[hidden]{display:none}
+#out.ok{background:var(--okbg);color:var(--ok)}
+#out.err{background:var(--errbg);color:var(--err)}
+#out i{flex:none;width:28px;height:28px;border-radius:50%;display:grid;place-items:center;font-style:normal;font-size:17px;background:currentColor}
+#out.ok i::after{content:"✓";color:var(--okbg)}
+#out.err i::after{content:"!";color:var(--errbg)}
+#out b{display:block;font-weight:400;font-size:18px}
+#out p{margin:2px 0 0;overflow-wrap:anywhere}
+.safe{display:flex;gap:10px;margin:0 0 18px;padding:12px 14px;border-radius:12px;background:var(--sunk);font-size:14px;line-height:1.4}
+.safe svg{flex:none;width:22px;height:22px;margin-top:1px;color:var(--ink2)}
+footer{max-width:560px;margin:18px auto 0;display:flex;align-items:center;gap:12px;padding:12px 14px;background:var(--card);border:3px solid var(--edge);border-radius:14px;font-size:15px}
+footer img,.av{width:48px;height:48px;flex:none;border-radius:8px;image-rendering:pixelated}
+.av{display:grid;place-items:center;background:var(--amber);color:#3B2A1A;font-size:22px}
+footer p{margin:0}
+footer small{display:block;font-size:13px;color:var(--ink2)}
+a{color:var(--link);text-underline-offset:3px}
+.gh{display:inline-flex;align-items:center;gap:6px}
+.gh svg{width:16px;height:16px;fill:currentColor}
+@media (min-width:600px){body{padding-top:40px}.in{padding:22px 26px 8px}header{padding:16px 26px}h1{font-size:26px}}
+@media (prefers-reduced-motion:reduce){#send:active{transform:none}}
+</style></head><body>
+<main>
+<header><img src="/icon.png" alt="" onerror="this.remove()"><div><h1>Send a list</h1><p>to Power Pockets on your Switch</p></div></header>
+<div class="in">
+<p class="lead">Add a catalogue.ac list to the Catalog on your console.</p>
+<ol>
+<li><h2><label for="code">Type the code shown on the console</label></h2>
+<input id="code" inputmode="numeric" autocomplete="one-time-code" maxlength="4" placeholder="····" aria-describedby="codehint">
+<p class="hint" id="codehint">4 digits, on the Receive screen.</p></li>
+<li><h2>Choose the list</h2>
+<label class="zone" id="zone"><input class="sr" id="file" type="file" accept=".json,application/json,text/plain">
+<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H6v18h12V7z"/><path d="M14 3v4h4M12 11v6m-3-3 3-3 3 3"/></svg>
+<b>Drop the export file here</b><span>or tap to choose a .json file</span></label>
+<div class="chip" id="chip" hidden><div><b id="fname"></b><span id="fsize"></span></div><button class="ghost" id="clear" type="button">Remove</button></div>
+<div class="or"><label for="link">or paste a share link</label></div>
+<input id="link" type="url" inputmode="url" autocomplete="off" placeholder="https://catalogue.ac/?l=…">
+<p class="hint">On catalogue.ac, the menu's Export gives a file. A list's Share button gives a link.</p></li>
+<li><h2>Send it</h2><button id="send" type="button">Send to the console</button></li>
+</ol>
+<div id="out" role="status" aria-live="polite" hidden><i></i><div><b id="otitle"></b><p id="omsg"></p></div></div>
+<p class="safe"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 3 4 6v6c0 4.5 3.4 8 8 9 4.6-1 8-4.5 8-9V6z"/><path d="m8.5 12 2.5 2.5 4.5-5"/></svg><span>This page comes from your Switch, on your own network. Nothing goes through the internet, and your save is not changed: the list only appears in the Catalog.</span></p>
+</div>
+</main>
+<footer><img src="/author.png" alt="" width="48" height="48" onerror="this.outerHTML='<span class=av aria-hidden=true>C</span>'">
+<p>Made by chatelp · <a class="gh" href="https://github.com/chatelp/ACNH-Power-Pockets"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 0a8 8 0 0 0-2.5 15.6c.4 0 .5-.2.5-.4v-1.5c-2.2.5-2.7-1-2.7-1-.4-.9-.9-1.2-.9-1.2-.7-.5.1-.5.1-.5.8.1 1.2.8 1.2.8.7 1.3 1.9.9 2.3.7.1-.5.3-.9.5-1.1-1.8-.2-3.6-.9-3.6-4 0-.9.3-1.6.8-2.1-.1-.2-.4-1 .1-2.1 0 0 .7-.2 2.2.8a7.5 7.5 0 0 1 4 0c1.5-1 2.2-.8 2.2-.8.4 1.1.2 1.9.1 2.1.5.6.8 1.3.8 2.1 0 3.1-1.9 3.8-3.6 4 .3.3.5.7.5 1.5v2.2c0 .2.1.5.6.4A8 8 0 0 0 8 0z"/></svg>ACNH Power Pockets</a>
+<small>If it helps you, a star on GitHub is always appreciated.</small></p></footer>
 <script>
-const $=id=>document.getElementById(id);
-function show(ok,msg){const o=$('out');o.className=ok?'ok':'err';o.textContent=msg;o.style.display='block';}
-$('send').onclick=async()=>{
-  const code=$('code').value.trim();
-  if(!/^\d{4}$/.test(code)){show(false,'Type the 4-digit code shown on the console.');return;}
-  let text=$('link').value.trim();
-  const f=$('file').files[0];
-  if(f){if(f.size>2000000){show(false,'This file is too large.');return;}text=await f.text();}
-  if(!text){show(false,'Choose a file or paste a link.');return;}
-  $('send').disabled=true;
-  try{
-    const r=await fetch('/send',{method:'POST',headers:{'X-Code':code,'Content-Type':'text/plain'},body:text});
-    const j=await r.json();show(j.ok,j.message);
-    if(j.ok){$('file').value='';$('link').value='';}
-  }catch(e){show(false,'The console did not answer. Is the Receive screen still open?');}
-  $('send').disabled=false;
+const $=s=>document.getElementById(s),code=$('code'),file=$('file'),zone=$('zone'),chip=$('chip'),link=$('link'),btn=$('send'),out=$('out'),MAX=2e6;
+let picked=null;
+const kb=n=>n<1e3?n+' bytes':n<1e6?Math.round(n/1e3)+' KB':(n/1e6).toFixed(1)+' MB';
+function show(ok,msg,focus){out.className=ok?'ok':'err';$('otitle').textContent=ok?'Sent':'Not sent';$('omsg').textContent=msg;out.hidden=false;
+ if(focus)focus.focus();else out.scrollIntoView({block:'nearest',behavior:'smooth'});}
+function render(){zone.hidden=!!picked;chip.hidden=!picked;if(picked){$('fname').textContent=picked.name;$('fsize').textContent=kb(picked.size)+' · ready to send';}}
+function pick(f){if(!f)return;if(f.size>MAX){file.value='';return show(false,'This file is larger than 2 MB. Export a smaller list.');}
+ picked=f;link.value='';out.hidden=true;render();}
+code.oninput=()=>{code.value=code.value.replace(/\D/g,'').slice(0,4)};
+file.onchange=()=>pick(file.files[0]);
+['dragenter','dragover'].forEach(t=>zone.addEventListener(t,e=>{e.preventDefault();zone.classList.add('over')}));
+['dragleave','drop'].forEach(t=>zone.addEventListener(t,e=>{e.preventDefault();zone.classList.remove('over')}));
+zone.addEventListener('drop',e=>pick(e.dataTransfer.files[0]));
+['dragover','drop'].forEach(t=>addEventListener(t,e=>e.preventDefault()));
+$('clear').onclick=()=>{picked=null;file.value='';render();file.focus()};
+link.oninput=()=>{if(picked&&link.value.trim()){picked=null;file.value='';render()}};
+btn.onclick=async()=>{
+ const c=code.value;
+ if(!/^\d{4}$/.test(c))return show(false,'Type the 4-digit code shown on the console.',code);
+ let text=picked?await picked.text():link.value.trim();
+ if(!text)return show(false,'Choose the export file or paste a share link.');
+ if(text.length>MAX)return show(false,'This is larger than 2 MB. Send a smaller list.');
+ btn.disabled=true;btn.textContent='Sending…';
+ try{const r=await fetch('/send',{method:'POST',headers:{'X-Code':c,'Content-Type':'text/plain'},body:text});
+  let j;try{j=await r.json()}catch(_){j={ok:false,message:'The console sent an unexpected answer ('+r.status+').'}}
+  show(!!j.ok,String(j.message||''));
+  if(j.ok){picked=null;file.value='';link.value='';render()}
+ }catch(_){show(false,'The console did not answer. Check that the Receive screen is still open.')}
+ btn.disabled=false;btn.textContent='Send to the console';
 };
 </script></body></html>
 )PAGE";
@@ -178,6 +255,14 @@ void ReceiveServer::handle(const std::function<ReceiveReply(const std::string&)>
     if (r.state == HttpRequest::TOO_BIG) { respond(413, "application/json", jsonReply(false, "This is too large for a list.")); return; }
     if (r.state == HttpRequest::BAD) { respond(400, "text/plain", "Bad request"); return; }
     if (r.method == "GET" && (r.path == "/" || r.path == "/index.html")) { respond(200, "text/html; charset=utf-8", PAGE); return; }
+    if (r.method == "GET") {
+        static const struct { const char* path; const char* name; const char* type; } FILES[] = {
+            { "/icon.png", "icon.png", "image/png" }, { "/author.png", "author.png", "image/png" }, { "/font.ttf", "font.ttf", "font/ttf" } };
+        for (const auto& f : FILES) {
+            std::string data;
+            if (r.path == f.path && files_ && files_(f.name, data)) { respond(200, f.type, data); return; }
+        }
+    }
     if (r.method != "POST" || r.path != "/send") { respond(404, "text/plain", "Not found"); return; }
     char want[8];
     snprintf(want, sizeof want, "%04d", code_);

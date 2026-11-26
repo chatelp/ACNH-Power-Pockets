@@ -106,6 +106,16 @@ bool ReceiveService::open(std::string& address, int& code, bool& offline) {
     u32 r = 0;
     randomGet(&r, sizeof r);
     code = (int)(r % 10000);
+    server_.setFiles([this](const std::string& name, std::string& data) {   // only the three names the server asks for
+        FILE* f = fopen((sdDir_ + name).c_str(), "rb");
+        if (!f) return false;
+        char buf[16384];
+        size_t n;
+        data.clear();
+        while ((n = fread(buf, 1, sizeof buf, f)) > 0 && data.size() < 1024 * 1024) data.append(buf, n);
+        fclose(f);
+        return !data.empty() && data.size() < 1024 * 1024;
+    });
     for (uint16_t port = 8080; port < 8090; port++) {
         if (!server_.start(port, code)) continue;
         struct in_addr a;

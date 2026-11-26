@@ -914,7 +914,7 @@ int main(int argc, char** argv) {
 
     pp::UpdateService updater(updDir, hooks.version, selfPath == updPaths.nro());
     hooks.updater = &updater;
-    pp::ReceiveService receiver;
+    pp::ReceiveService receiver(sdDir);
     hooks.receiver = &receiver;
     hooks.lists = &importedLists;
     hooks.clothing = &clothingIds;

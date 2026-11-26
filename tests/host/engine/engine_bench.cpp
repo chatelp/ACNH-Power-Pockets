@@ -1036,7 +1036,9 @@ static void scnLists(const Save& s0) {
         idle(2); openBrowse(); SEE("Receive a list from catalogue.ac"); SEE("Japanese bedroom");
         press(DOWN); press(A); idle(2); SEE("Fill pockets with this list");
         press(DOWN); press(A); idle(2); SEE("Fill pockets with \"Japanese bedroom\"?"); SEE("base color");
-        press(RIGHT); press(A); idle(2); SEE("6 slots filled from the list");
+        SEE("Already in your pockets: 36 pieces");                      // 5 tickets, 30 wood and a golden axe are there already
+        press(RIGHT); press(A); idle(2); SEE("3 slots filled from the list");
+        press(A); press(DOWN); press(A); idle(2); SEE("Everything in this list is already in your pockets");   // a second Fill adds nothing
         press(B); idle(2); panel(P_CATALOG, P_POCKETS);
         applyFromPanel(); SEE("Changes applied");
         probe([&]() {
@@ -1051,7 +1053,7 @@ static void scnLists(const Save& s0) {
                 if (id == ID_WOOD) wood += pp::rawToQty(raw);
                 if (id == ID_GAXE) { axes++; CHECK(raw == 0); }
             }
-            CHECK(changedOld == 0); CHECK(nmt == 25 && nmtStacks == 3); CHECK(wood == 30); CHECK(axes == 2);
+            CHECK(changedOld == 0); CHECK(nmt == 20 && nmtStacks == 2); CHECK(wood == 0); CHECK(axes == 1);   // only what was missing
             CHECK(validHashes(p, P_REGS, 2) == 2);
         });
         quitFromPanel();
@@ -1063,15 +1065,29 @@ static void scnLists(const Save& s0) {
         rxSend("4821", "hello"); rxExpect("isn't a catalogue.ac export");
         rxSend("4821", "{\"name\":\"From phone\",\"items\":{\"2768\":5,\"rr1\":1}}"); rxExpect("From phone\\\" is on the console: 1 item. Open it in Catalog > Browse collections. 1 entry skipped");
         SEE("Received \"From phone\": 1 item");
+        probe([]() {                                     // the page's pictures come from the SD card
+            std::string t = screenText(); size_t at = t.find("http://127.0.0.1:"); int port = at == std::string::npos ? 0 : atoi(t.c_str() + at + 17);
+            g_rxSock = socket(AF_INET, SOCK_STREAM, 0);
+            sockaddr_in a; memset(&a, 0, sizeof a); a.sin_family = AF_INET; a.sin_port = htons((uint16_t)port); a.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+            CHECK(connect(g_rxSock, (sockaddr*)&a, sizeof a) == 0);
+            const char* req = "GET /font.ttf HTTP/1.1\r\nHost: x\r\n\r\n";
+            CHECK(send(g_rxSock, req, strlen(req), 0) == (ssize_t)strlen(req));
+            usleep(30000);
+        });
+        idle(12); rxExpect("Content-Type: font/ttf");
         for (int i = 0; i < 4; i++) { rxSend("0000", "x"); rxExpect("Wrong code"); }
         SEE("Too many wrong codes"); press(A); idle(2);
         SEE("From phone");
         press(A); idle(2); SEE("Code:");                             // open again: a working server
         rxSend("4821", "{\"name\":\"Second\",\"items\":{\"5851\":2}}"); rxExpect("\"ok\":true");
+        rxSend("4821", "{\"name\":\"Second\",\"items\":{\"5851\":7}}"); rxExpect("Second\\\" was updated on the console: 1 item");   // same name: replaced
+        SEE("Updated \"Second\": 1 item");
         press(B); idle(2); NOT_SEE("Code:");
         quitFromPanel();
     }, [&]() {
-        CHECK(fileThere(sd("lists/list_001.json")) && fileThere(sd("lists/list_002.json")) && !fileThere(sd("lists/list_003.json")));
+        CHECK(fileThere(sd("lists/from-phone.json")) && fileThere(sd("lists/second.json")) && !fileThere(sd("lists/second-2.json")));
+        const std::string want = "{\"name\":\"Second\",\"items\":{\"5851\":7}}\n";
+        CHECK(slurp(sd("lists/second.json")) == Bytes(want.begin(), want.end()));
         CHECK(counters.nandWrites == 0 && counters.commits == 0);
         CHECK(net.socketInits == net.socketExits && net.socketInits == 2 && net.urls.empty());
     });
@@ -1083,12 +1099,14 @@ static void scnLists(const Save& s0) {
         idle(2); openCheck(); connect(); SEE("You have the latest version"); press(A); idle(2); press(B); idle(2);
         panel(P_SYSTEM, P_CATALOG); press(RIGHT); press(A); idle(2); press(A); idle(2);
         NOT_SEE("couldn't start"); SEE("Code:");
-        rxSend("4821", "{\"name\":\"Third\",\"items\":{\"5851\":1}}"); rxExpect("\"ok\":true");
+        rxSend("4821", "{\"lists\":[{\"name\":\"Third\",\"items\":{\"5851\":1}},{\"name\":\"Fourth\",\"items\":{\"2768\":2,\"9617\":1}}]}");
+        rxExpect("2 lists are on the console: \\\"Third\\\" (1 item), \\\"Fourth\\\" (2 items). Open them in Catalog");
+        SEE("Received 2 lists: Third, Fourth");
         press(B); idle(2); press(B); idle(2);                    // close the Receive screen, then the collection list
         panel(P_CATALOG, P_SYSTEM); press(A); idle(2); press(LEFT); press(A); idle(2);   // About > Check again: the other way round
         connect(); SEE("You have the latest version"); press(A); idle(2); press(B); idle(2);
         panel(P_SYSTEM, P_POCKETS); quitFromPanel();
-    }, [&]() { CHECK(!net.doubleInit && net.socketInits == net.socketExits && net.socketInits >= 1); CHECK(fileThere(sd("lists/list_003.json"))); });
+    }, [&]() { CHECK(!net.doubleInit && net.socketInits == net.socketExits && net.socketInits >= 1); CHECK(fileThere(sd("lists/third.json")) && fileThere(sd("lists/fourth.json"))); });
     launch(w, "offline", [&]() { net.connected = false; idle(2); openBrowse(); press(A); idle(2); SEE("isn't connected to a network"); press(A); idle(2); quitFromPanel(); },
         [&]() { CHECK(net.socketInits == 0); });
     // Delete a list file; a damaged file shows up and can be deleted too.
@@ -1102,7 +1120,7 @@ static void scnLists(const Save& s0) {
         NOT_SEE("Japanese bedroom");
         quitFromPanel();
     }, [&]() {
-        CHECK(!fileThere(sd("lists/broken.json")) && !fileThere(sd("lists/catalogue-2026-11-26.json")) && fileThere(sd("lists/list_001.json")));
+        CHECK(!fileThere(sd("lists/broken.json")) && !fileThere(sd("lists/catalogue-2026-11-26.json")) && fileThere(sd("lists/from-phone.json")));
         CHECK(counters.nandWrites == 0);
     });
 }
