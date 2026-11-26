@@ -1075,6 +1075,20 @@ static void scnLists(const Save& s0) {
         CHECK(counters.nandWrites == 0 && counters.commits == 0);
         CHECK(net.socketInits == net.socketExits && net.socketInits == 2 && net.urls.empty());
     });
+    // Seen on the console: Check for updates first, then Receive. The update side kept the
+    // socket service open and libnx refused a second initialization ("couldn't start").
+    launch(w, "receive after an update check", [&]() {
+        const Bytes z = { 1 };
+        putRelease("1.3.0", z, hexOf(z));
+        idle(2); openCheck(); connect(); SEE("You have the latest version"); press(A); idle(2); press(B); idle(2);
+        panel(P_SYSTEM, P_CATALOG); press(RIGHT); press(A); idle(2); press(A); idle(2);
+        NOT_SEE("couldn't start"); SEE("Code:");
+        rxSend("4821", "{\"name\":\"Third\",\"items\":{\"5851\":1}}"); rxExpect("\"ok\":true");
+        press(B); idle(2); press(B); idle(2);                    // close the Receive screen, then the collection list
+        panel(P_CATALOG, P_SYSTEM); press(A); idle(2); press(LEFT); press(A); idle(2);   // About > Check again: the other way round
+        connect(); SEE("You have the latest version"); press(A); idle(2); press(B); idle(2);
+        panel(P_SYSTEM, P_POCKETS); quitFromPanel();
+    }, [&]() { CHECK(!net.doubleInit && net.socketInits == net.socketExits && net.socketInits >= 1); CHECK(fileThere(sd("lists/list_003.json"))); });
     launch(w, "offline", [&]() { net.connected = false; idle(2); openBrowse(); press(A); idle(2); SEE("isn't connected to a network"); press(A); idle(2); quitFromPanel(); },
         [&]() { CHECK(net.socketInits == 0); });
     // Delete a list file; a damaged file shows up and can be deleted too.

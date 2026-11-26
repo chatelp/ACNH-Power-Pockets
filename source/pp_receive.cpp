@@ -114,14 +114,15 @@ HttpRequest parseHttp(const std::string& raw, size_t maxBody) {
 bool ReceiveServer::start(uint16_t port, int code) {
     stop();
     lockedOut_ = false; wrong_ = 0; received_ = 0; code_ = code;
+    errno_ = 0;
     int s = socket(AF_INET, SOCK_STREAM, 0);
-    if (s < 0) return false;
+    if (s < 0) { errno_ = errno; return false; }
     int one = 1;
     setsockopt(s, SOL_SOCKET, SO_REUSEADDR, &one, sizeof one);
     sockaddr_in a;
     memset(&a, 0, sizeof a);
     a.sin_family = AF_INET; a.sin_port = htons(port); a.sin_addr.s_addr = htonl(INADDR_ANY);
-    if (bind(s, (sockaddr*)&a, sizeof a) != 0 || listen(s, 4) != 0) { close(s); return false; }
+    if (bind(s, (sockaddr*)&a, sizeof a) != 0 || listen(s, 4) != 0) { errno_ = errno; close(s); return false; }
     socklen_t len = sizeof a;
     getsockname(s, (sockaddr*)&a, &len);
     port_ = ntohs(a.sin_port);

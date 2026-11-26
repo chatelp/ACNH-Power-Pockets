@@ -1120,7 +1120,13 @@ struct Ui::Impl {
         if (!e->receiver) return;
         Modal m; m.kind = Modal::RECEIVE; m.title = S::RX_TITLE;
         bool offline = false;
-        if (!e->receiver->open(m.address, m.code, offline)) { showError(offline ? S::RX_E_OFFLINE : S::RX_E_START, S::RX_ERR_TITLE); return; }
+        if (!e->receiver->open(m.address, m.code, offline)) {
+            std::string msg = offline ? S::RX_E_OFFLINE : S::RX_E_START;
+            const std::string why = e->receiver->error();
+            if (!offline && !why.empty()) msg += " (" + why + ")";
+            showError(msg, S::RX_ERR_TITLE);
+            return;
+        }
         m.status = S::RX_WAITING;
         push(m);
     }

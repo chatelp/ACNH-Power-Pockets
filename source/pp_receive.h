@@ -30,6 +30,7 @@ public:
     bool running() const { return listen_ >= 0; }
     uint16_t port() const { return port_; }
     int  received() const { return received_; }
+    int  lastErrno() const { return errno_; }            // why start() failed
     bool lockedOut() const { return lockedOut_; }        // too many wrong codes: stopped
     // Call once per frame. Never blocks. `nowMs` is any monotonic clock in milliseconds.
     void poll(uint32_t nowMs, const std::function<ReceiveReply(const std::string&)>& onText);
@@ -39,7 +40,7 @@ private:
     void handle(const std::function<ReceiveReply(const std::string&)>& onText);
     int listen_ = -1, client_ = -1;
     uint16_t port_ = 0;
-    int code_ = 0, wrong_ = 0, received_ = 0;
+    int code_ = 0, wrong_ = 0, received_ = 0, errno_ = 0;
     bool lockedOut_ = false;
     uint32_t clientSince_ = 0;
     std::string in_;

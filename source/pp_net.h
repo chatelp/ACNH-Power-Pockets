@@ -62,8 +62,10 @@ public:
     void close() override;
     void poll(const std::function<ReceiveReply(const std::string&)>& onText) override;
     bool lockedOut() override { return server_.lockedOut(); }
+    std::string error() override { return error_; }
 private:
     ReceiveServer server_;
+    char error_[96] = "";
     bool sockets_ = false;
 };
 

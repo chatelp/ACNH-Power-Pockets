@@ -64,6 +64,7 @@ public:
     virtual void close() = 0;
     virtual void poll(const std::function<ReceiveReply(const std::string&)>& onText) = 0;
     virtual bool lockedOut() = 0;
+    virtual std::string error() { return std::string(); }   // why open() failed, for the error message
 };
 
 struct EngineHooks {

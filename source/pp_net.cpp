@@ -6,10 +6,28 @@
 #include <arpa/inet.h>
 #include <chrono>
 #include <netinet/in.h>
+#include <cstdio>
+#include <cstring>
 
 namespace pp {
 
 namespace {
+// The console's socket service is opened once and shared: libnx refuses a second
+// socketInitialize() while the first one is still open (LibnxError_AlreadyInitialized).
+// The updater and the Receive screen each take a reference.
+int g_socketUsers = 0;
+Result socketsUp() {
+    if (g_socketUsers == 0) {
+        const Result rc = socketInitializeDefault();
+        if (R_FAILED(rc)) return rc;
+    }
+    g_socketUsers++;
+    return 0;
+}
+void socketsDown() {
+    if (g_socketUsers > 0 && --g_socketUsers == 0) socketExit();
+}
+
 struct Transfer {
     const std::function<bool(const uint8_t*, size_t)>* sink;
     const std::function<bool()>* cancelled;
@@ -73,6 +91,7 @@ NetError CurlClient::get(const std::string& url, size_t maxBytes, const std::fun
 bool ReceiveService::open(std::string& address, int& code, bool& offline) {
     close();
     offline = false;
+    error_[0] = 0;
     u32 ip = 0;
     bool connected = false;
     if (R_SUCCEEDED(nifmInitialize(NifmServiceType_User))) {
@@ -81,7 +100,8 @@ bool ReceiveService::open(std::string& address, int& code, bool& offline) {
         nifmExit();
     }
     if (!connected) { offline = true; return false; }
-    if (R_FAILED(socketInitializeDefault())) return false;
+    const Result rc = socketsUp();
+    if (R_FAILED(rc)) { snprintf(error_, sizeof error_, "sockets 0x%X", (unsigned)rc); return false; }
     sockets_ = true;
     u32 r = 0;
     randomGet(&r, sizeof r);
@@ -93,13 +113,14 @@ bool ReceiveService::open(std::string& address, int& code, bool& offline) {
         address = std::string("http://") + inet_ntoa(a) + ":" + std::to_string(port);
         return true;
     }
+    snprintf(error_, sizeof error_, "ports 8080-8089: %s", strerror(server_.lastErrno()));
     close();
     return false;
 }
 
 void ReceiveService::close() {
     server_.stop();
-    if (sockets_) socketExit();
+    if (sockets_) socketsDown();
     sockets_ = false;
 }
 
@@ -128,14 +149,14 @@ void UpdateService::start(UpdateState s) {
     job_.begin(s);
     what_ = s;
     // Sockets only live as long as a job. If they or the thread can't be had, the job fails cleanly.
-    if (R_FAILED(socketInitializeDefault())) { job_.abort(); return; }
+    if (R_FAILED(socketsUp())) { job_.abort(); return; }
     curl_global_init(CURL_GLOBAL_DEFAULT);
     if (R_SUCCEEDED(threadCreate(&thread_, entry, this, nullptr, 0x40000, 0x2C, -2))) {
         if (R_SUCCEEDED(threadStart(&thread_))) { running_ = true; return; }
         threadClose(&thread_);
     }
     curl_global_cleanup();
-    socketExit();
+    socketsDown();
     job_.abort();
 }
 
@@ -146,7 +167,7 @@ void UpdateService::stop() {
     threadClose(&thread_);
     running_ = false;
     curl_global_cleanup();
-    socketExit();
+    socketsDown();
 }
 
 } // namespace pp

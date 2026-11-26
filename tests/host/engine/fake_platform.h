@@ -51,6 +51,7 @@ struct Net {
     std::vector<std::string> urls;       // everything that was requested
     bool unsafe = false;                 // a transfer without HTTPS-only + certificate checks
     int  onlineChecks = 0, socketInits = 0, socketExits = 0;
+    bool doubleInit = false;             // a second socketInitialize while open (refused by libnx)
     long http = 0;
     std::string nextLoad, nextArgs;      // envSetNextLoad
 };

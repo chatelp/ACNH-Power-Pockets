@@ -137,7 +137,7 @@ It only works for the copy of the app at `switch/acnh_power_pockets/acnh_power_p
 
 ### Lists from catalogue.ac
 
-From version 1.5.0, the lists you make on [The ULTIMATE Catalogue](https://catalogue.ac) show up in *Catalog › Browse collections › Your lists*. Open one and take its items with **Y**, or use **A › Fill pockets with this list**: its items go into your empty slots, with their quantities. As always, nothing is written until you apply.
+From version 1.4.0, the lists you make on [The ULTIMATE Catalogue](https://catalogue.ac) show up in *Catalog › Browse collections › Your lists*. Open one and take its items with **Y**, or use **A › Fill pockets with this list**: its items go into your empty slots, with their quantities. As always, nothing is written until you apply.
 
 To get a list onto the console, without taking the SD card out:
 
