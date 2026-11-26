@@ -37,6 +37,8 @@
 #include "pp_ui.h"
 #include "pp_update.h"
 #include "pp_net.h"
+#include "pp_lists.h"
+#include "pp_receive.h"
 #include "pp_strings.h"
 
 extern "C" void* pp_bench_malloc(size_t size);

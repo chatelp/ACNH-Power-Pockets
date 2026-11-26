@@ -11,7 +11,7 @@ SDL_CFLAGS="$(sdl2-config --cflags)"
 SDL_LIBS="$(sdl2-config --libs) -lSDL2_ttf"
 $CXX -std=gnu++17 -fno-exceptions -fno-rtti -O1 -g \
     $SDL_CFLAGS -I"$(dirname "$(sdl2-config --prefix)/include/SDL2/SDL.h")/.." -I"$ROOT/tests/host/stubs" \
-    "$ROOT/source/pp_model.cpp" "$ROOT/source/pp_ui.cpp" "$ROOT/source/pp_update.cpp" "$ROOT/tests/host/ui_gallery.cpp" \
+    "$ROOT/source/pp_model.cpp" "$ROOT/source/pp_ui.cpp" "$ROOT/source/pp_update.cpp" "$ROOT/source/pp_lists.cpp" "$ROOT/source/pp_receive.cpp" "$ROOT/tests/host/ui_gallery.cpp" \
     $SDL_LIBS -lz -o "$OUT/ui_gallery"
 # Homebrew's sdl2 is sdl2-compat and dlopen()s SDL3 from outside the default search path.
 DYLD_FALLBACK_LIBRARY_PATH="$(brew --prefix 2>/dev/null || echo /usr/local)/lib:${DYLD_FALLBACK_LIBRARY_PATH:-}" \

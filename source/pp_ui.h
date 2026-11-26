@@ -19,6 +19,8 @@
 
 #include "pp_model.h"
 #include "pp_update.h"
+#include "pp_lists.h"
+#include "pp_receive.h"
 
 namespace pp {
 
@@ -53,6 +55,17 @@ public:
     virtual const ReleaseInfo& release() = 0;
 };
 
+// "Receive a list" over the local network (main.cpp: sockets + ReceiveServer). Open only
+// while its screen is shown. It knows nothing of the save.
+class Receiver {
+public:
+    virtual ~Receiver() {}
+    virtual bool open(std::string& address, int& code, bool& offline) = 0;   // never turns Wi-Fi on
+    virtual void close() = 0;
+    virtual void poll(const std::function<ReceiveReply(const std::string&)>& onText) = 0;
+    virtual bool lockedOut() = 0;
+};
+
 struct EngineHooks {
     // ---- Working data the UI may edit (invariant I1) ----
     Pockets   pockets;                    // slots 1..20 at personal + 0x37CA8, bag slots 21..40 at 0x37BF0 (decrypted)
@@ -74,6 +87,10 @@ struct EngineHooks {
     std::string sdDir;                    // "sdmc:/switch/acnh_power_pockets/"
     std::string version;
     Updater* updater = nullptr;           // optional: System > About > Check for updates
+    ImportedLists* lists = nullptr;       // optional: catalogue.ac lists (Catalog > Your lists)
+    const ClothingIds* clothing = nullptr;
+    std::string listsDir;                 // sdmc:/switch/acnh_power_pockets/lists
+    Receiver* receiver = nullptr;         // optional: Catalog > Your lists > Receive
     std::string startupNote;              // toast shown at launch (result of an update)
     bool startupWarn = false;
 

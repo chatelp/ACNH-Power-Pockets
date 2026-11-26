@@ -101,7 +101,7 @@ for f in sorted((ROOT / "source").glob("pp_*")):
     print(f"[{'OK ' if ok else 'FAIL'}] {f.name} never touches the engine" + ("" if ok else f": {bad}"))
 
 # The update code replaces the app's own files: it must not even know where a save is.
-for name in ("pp_update.h", "pp_update.cpp", "pp_net.h", "pp_net.cpp"):
+for name in ("pp_update.h", "pp_update.cpp", "pp_net.h", "pp_net.cpp", "pp_lists.h", "pp_lists.cpp", "pp_receive.h", "pp_receive.cpp", "pp_json.h"):
     code = re.sub(r"//[^\n]*|/\*.*?\*/", "", (ROOT / "source" / name).read_text(encoding="utf-8"), flags=re.S)
     bad = [w for w in ("personal", "main.dat", "Villager", "fsOpen", "fsFs", "fsdev", "backup_", "SSL_VERIFYPEER, 0", "SSL_VERIFYHOST, 0", "http://") if w in code]
     ok = not bad

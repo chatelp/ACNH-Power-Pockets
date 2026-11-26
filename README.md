@@ -121,6 +121,7 @@ The folder should contain:
 | `item_glyphs.png`, `item_glyphs.txt` | Strongly recommended: item pictures, and the kinds of items that never stack (without them, the `1/slot` protection only covers tools and the few items listed in `nonstackable.txt`) |
 | `item_stacks.txt` | Strongly recommended: the largest stack the game allows for each item (without it, quantities are only kept within 1–99, and the game cuts a stack that is too large in its own way) |
 | `item_collections.txt` | Recommended: the collections of *Catalog* and its type filter (without it, *Catalog* only searches) |
+| `catalogue_ac.txt` | Recommended: the colors of clothing in lists from catalogue.ac (without it, clothing in those lists is skipped) |
 | `icon.png`, `ui_icons.png`, `author.png`, `nonstackable.txt` | Optional: icons, the picture in *About*, extra `1/slot` rules |
 
 ### Updating from the app
@@ -133,6 +134,19 @@ From version 1.4.0, *System › About and updates › Check for updates* looks f
 - **If it goes wrong:** a failed or interrupted installation is undone, at once or at the next launch. Until the new version has started once, the old one stays next to it as `acnh_power_pockets_previous.nro`: launch that one from the Homebrew Menu to go back. Afterwards it is kept as `update/previous.nro`.
 
 It only works for the copy of the app at `switch/acnh_power_pockets/acnh_power_pockets.nro`. The Homebrew App Store doesn't know about updates made this way: it may offer the version you already have.
+
+### Lists from catalogue.ac
+
+From version 1.5.0, the lists you make on [The ULTIMATE Catalogue](https://catalogue.ac) show up in *Catalog › Browse collections › Your lists*. Open one and take its items with **Y**, or use **A › Fill pockets with this list**: its items go into your empty slots, with their quantities. As always, nothing is written until you apply.
+
+To get a list onto the console, without taking the SD card out:
+
+1. In Power Pockets: *Catalog › Browse collections › Receive a list from catalogue.ac*. The console shows an address and a 4-digit code.
+2. On your phone or computer, on the same Wi-Fi, open that address. Drop the file from catalogue.ac's menu › *Export*, or paste a list's share link (`https://catalogue.ac/?l=…`), type the code and send.
+
+The page is served by the console itself, on your own network, and only while that screen is open. Nothing goes through the internet. Five wrong codes close it. You can also copy an export into `switch/acnh_power_pockets/lists/` (SD card, FTP or MTP).
+
+What comes across: furniture, items and clothing in the right color. Furniture comes in its base color or pattern. Recipes and villagers are skipped, and the app says how many.
 
 ### Already using ACNH-Save-Editor?
 
@@ -164,7 +178,7 @@ Power Pockets has its own file name and its own folder (`switch/acnh_power_pocke
 |---|---|
 | **Pockets** | Your 20, 30 or 40 slots, in 2, 3 or 4 columns of 10. **Y** places the item in hand in the next empty slot, or picks up the item under the cursor when your hand is empty. Menu: *Fill empty slots*, *Take in hand*, *Quantity…*, *Held quantity…*, *Enter item ID (hex)…*, *Add/Remove favorite*, *Revert to original*, *Clear slot*. |
 | **Favorites** | Two groups, each A to Z: **YOURS**, then **BUILT-IN**. **Y** takes one and jumps back to Pockets. A built-in favorite can be hidden, and comes back with *Restore default favorites*. |
-| **Catalog** | Search by name or 4-digit hex ID: **X** opens the keyboard from anywhere in the results. Or, on the top row, **▶** › *Browse collections*: 113 themed lists (a Japanese traditional style, 49 furniture series, 46 HHA themes, clothing styles and themes), each A to Z. **ZL / ZR** keep only one type of item. ★ marks your favorites. |
+| **Catalog** | Search by name or 4-digit hex ID: **X** opens the keyboard from anywhere in the results. Or, on the top row, **▶** › *Browse collections*: 113 themed lists (a Japanese traditional style, 49 furniture series, 46 HHA themes, clothing styles and themes), each A to Z, and your lists from catalogue.ac. **ZL / ZR** keep only one type of item. ★ marks your favorites. |
 | **Bells & Miles** | Wallet, Bank, Nook Miles, House loan. Step with the D-pad (±1,000 / ±100,000, ×10 after holding 2 s) or type a value. A warning shows above the game's wallet limit (99,999). |
 | **Turnips** | Read-only: Daisy Mae's price, the week's prices and pattern, a graph, and the value of the turnips you carry. A banner warns when the prices are from a past week. |
 | **Loadouts** | Five saved pocket setups. Loading one is a pending change like any other. |
@@ -219,6 +233,7 @@ All in `sdmc:/switch/acnh_power_pockets/`.
 | `damaged_*.dat` | Save Doctor | Copy taken before a repair |
 | `l_0.dat` … `l_4.dat` | the app | Loadouts: 160 bytes for 20 slots (the upstream format), 320 bytes for 30 or 40 slots |
 | `layout_*.dat` | the app | Cache of the save's region layout |
+| `lists/` | the app, or you | Lists from catalogue.ac: exports (`.json`) and share links (`.txt`). Delete them from *Your lists* or by hand |
 | `update/` | the app | A downloaded update, and the previous version after an update (`previous.nro`) |
 
 `user_favorites.txt` format:
@@ -268,7 +283,7 @@ You can check the project without a Switch:
 ```sh
 git remote add upstream https://github.com/cbreezy210/ACNH-Save-Editor.git && git fetch upstream
 python3 tools/check_engine_untouched.py upstream/main   # proves the save engine matches upstream, SD folder name aside
-sh tests/host/run.sh            # unit tests (updates included: interrupted at every step), parser fuzzing, item-picture rules vs the design tool, compile check
+sh tests/host/run.sh            # unit tests (updates interrupted at every step, catalogue.ac lists, the Receive server over real sockets), parser fuzzing, item-picture rules vs the design tool, compile check
 sh tests/host/engine_bench.sh   # the real main.cpp on a fake console: byte-exact Apply / restore / Doctor, injected failures
 PP_REAL_SAVE=<unzipped JKSV backup> sh tests/host/engine_bench.sh real_save   # same checks on a dump of your own save
 sh tests/host/ui_shots.sh       # the real UI with a fake engine: flows and failure dialogs, with screenshots
@@ -280,6 +295,7 @@ The two `ui_*` scripts need SDL2 and SDL2_ttf (`brew install sdl2 sdl2_ttf`) and
 |---|---|
 | `source/main.cpp` | Upstream save engine and the wiring to the UI |
 | `source/pp_model.*` | Testable logic: slots, pending changes, favorites, `1/slot` and picture rules, backup checks, turnip prices |
+| `source/pp_lists.*`, `source/pp_receive.*` | catalogue.ac lists (export and share-link reader) and the local "Receive a list" server (testable) |
 | `source/pp_update.*`, `source/pp_net.*` | Updates: release check, package, installation and its undo (testable), and the HTTPS client |
 | `source/pp_ui.*`, `source/pp_strings.h` | Panels, dialogs, every on-screen string |
 | `tools/` | Engine check, the scripts that draw the logo, icons and item pictures, and the ones that build `item_stacks.txt` from NHSE and `item_collections.txt` from the community spreadsheet |
@@ -329,6 +345,7 @@ Four shipped data files keep their own license (details in [THIRD_PARTY_NOTICES.
 - **cbreezy210** — [ACNH-Save-Editor](https://github.com/cbreezy210/ACNH-Save-Editor), the save engine this project runs on.
 - **kwsch and [NHSE](https://github.com/kwsch/NHSE)** — the ACNH save-format research everything here relies on, the item names table (`items.txt`) and the item kinds and stack limits behind `item_stacks.txt` (GPL-3.0).
 - **The [Animal Crossing: New Horizons data spreadsheet](https://docs.google.com/spreadsheets/d/1mo7myqHry5r_TKvakvIhHbcEAEQpSiNoNQoIS8sMpvM) community and Norviah's [animal-crossing](https://github.com/Norviah/animal-crossing) JSON (MIT)** — the series, themes, styles and tags behind the Catalog collections (`item_collections.txt`).
+- **[The ULTIMATE Catalogue](https://catalogue.ac)** — the lists this app can import, and the color table of its clothing (`catalogue_ac.txt`, `tools/make_catalogue_ac.py`). Not affiliated.
 - **averne and [Turnips](https://github.com/averne/Turnips)** — the turnip prices previewer that inspired the Turnips panel, and the location of the save date. No code was taken from it.
 - **[devkitPro](https://devkitpro.org) / libnx**, **SDL2**, **SDL_ttf**, **stb_image**, **[curl](https://curl.se)** (`licenses/curl.txt`).
 - The portrait in *About* (`author.png`) is not under the MIT license; please replace it in a fork.

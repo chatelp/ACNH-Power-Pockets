@@ -91,7 +91,7 @@ struct ReviewRow {
     std::string target, before, after;
 };
 struct Modal {
-    enum Kind { MENU, STEPPER, DIALOG, REVIEW, WAIT, PROGRESS } kind = MENU;
+    enum Kind { MENU, STEPPER, DIALOG, REVIEW, WAIT, PROGRESS, RECEIVE } kind = MENU;
     std::string title, subtitle;
     // menu
     std::vector<MenuEntry> entries;
@@ -115,6 +115,9 @@ struct Modal {
     int top = 0;
     // progress
     int percent = -1;       // -1: no bar
+    // receive
+    std::string address, status;
+    int code = 0;
 };
 
 struct Hand { bool valid = false; uint16_t id = ID_EMPTY; int qty = 1; };
@@ -156,6 +159,12 @@ struct Ui::Impl {
     bool catCol = false;                  // row 0: the collection box has the cursor (else the search field)
     bool browsing = false;                // the collection list replaces the Catalog list
     int  browseFocus = 0;
+    // Catalog groups: "Your lists" (catalogue.ac) first, then item_collections.txt.
+    // In "Your lists", collection 0 is the Receive entry, then one per list or unreadable file.
+    struct UserEntry { int kind; std::string file; int list; };   // kind: 0 receive, 1 list, 2 unreadable file
+    std::vector<CollectionGroup> allG;
+    std::vector<UserEntry> userEntries;
+    bool userGroup = false;
     LoadoutInfo lo[8];
     InfoData info;
     bool infoValid = false;
@@ -833,12 +842,48 @@ struct Ui::Impl {
     // items of a collection (item_collections.txt), both narrowed by the ZL / ZR type filter.
     static const int CAT_ROWS = ROWS - 1;                      // row 0 is the search field
     static const int SEARCH_W = 600;
-    bool collectionsOn() const {
-        return e->collections && e->collections->loaded() && e->collections->count() > 0 && itemsLoaded();
+    bool collectionsOn() const { return !allG.empty() && itemsLoaded(); }
+    bool typesOn() const { return e->collections && e->collections->loaded(); }
+    void rebuildGroups() {
+        allG.clear(); userEntries.clear();
+        userGroup = e && e->lists && itemsLoaded();
+        if (userGroup) {
+            CollectionGroup u; u.name = S::GRP_YOUR_LISTS;
+            if (e->receiver) { Collection rx; rx.name = S::RX_ENTRY; u.list.push_back(rx); userEntries.push_back({ 0, "", -1 }); }
+            for (const ListFile& f : e->lists->files()) {
+                if (f.lists.empty()) { Collection bad; bad.name = fmt(S::LIST_BAD_FMT, f.file.c_str()); u.list.push_back(bad); userEntries.push_back({ 2, f.file, -1 }); continue; }
+                for (size_t i = 0; i < f.lists.size(); i++) {
+                    Collection c; c.name = f.lists[i].name;
+                    for (const ListItem& it : f.lists[i].items) c.ids.push_back(it.id);
+                    u.list.push_back(c); userEntries.push_back({ 1, f.file, (int)i });
+                }
+            }
+            if (u.list.empty()) userGroup = false; else allG.push_back(u);
+        }
+        if (e && e->collections && e->collections->loaded())
+            for (const CollectionGroup& g : e->collections->groups()) allG.push_back(g);
+        if (collG >= (int)allG.size()) collG = collC = -1;
+        dirty = true;
+    }
+    const UserEntry* userEntry(int g, int c) const {
+        if (!userGroup || g != 0 || c < 0 || c >= (int)userEntries.size()) return nullptr;
+        return &userEntries[c];
+    }
+    const ImportedList* userList(int g, int c) const {
+        const UserEntry* u = userEntry(g, c);
+        if (!u || u->kind != 1) return nullptr;
+        for (const ListFile& f : e->lists->files()) if (f.file == u->file && u->list < (int)f.lists.size()) return &f.lists[u->list];
+        return nullptr;
+    }
+    // Quantity of `id` in the open catalogue.ac list (0: no list open, or not in it).
+    int listQty(uint16_t id) const {
+        const ImportedList* l = userList(collG, collC);
+        if (l) for (const ListItem& it : l->items) if (it.id == id) return it.qty;
+        return 0;
     }
     const Collection* activeCollection() const {
         if (!collectionsOn() || collG < 0) return nullptr;
-        const std::vector<CollectionGroup>& G = e->collections->groups();
+        const std::vector<CollectionGroup>& G = allG;
         if (collG >= (int)G.size() || collC < 0 || collC >= (int)G[collG].list.size()) return nullptr;
         return &G[collG].list[collC];
     }
@@ -848,7 +893,7 @@ struct Ui::Impl {
         int& f = focus[P_CATALOG];
         const int keep = (!fresh && f > 0 && f <= (int)results.size()) ? results[f - 1] : -1;
         const bool onRow0 = !fresh && f == 0;
-        results = collectionsOn() ? filterByType(catAll, *e->collections, typeFilter) : catAll;
+        results = typesOn() ? filterByType(catAll, *e->collections, typeFilter) : catAll;
         dirty = true;
         if (onRow0) return;
         f = results.empty() ? 0 : 1;
@@ -864,7 +909,7 @@ struct Ui::Impl {
             else if (query.empty()) left = S::SEARCH_EMPTY;
             else left = fmt(S::CTX_RESULTS_FMT, nAll, plural(nAll), query.c_str());
             if (typeFilter != TF_ALL && nAll > 0) left += fmt(S::FILTER_OF_FMT, (int)results.size());
-            contextBanner(fit(fSmall, left, 860), collectionsOn() ? fmt(S::FILTER_FMT, S::FILTER_NAME[typeFilter]) : std::string());
+            contextBanner(fit(fSmall, left, 860), typesOn() ? fmt(S::FILTER_FMT, S::FILTER_NAME[typeFilter]) : std::string());
         }
         int f = focus[P_CATALOG];
         const bool sf = f == 0 && !catCol, cf = f == 0 && catCol;
@@ -907,7 +952,7 @@ struct Ui::Impl {
     std::vector<CollRef> collFlat() const {
         std::vector<CollRef> out;
         if (!collectionsOn()) return out;
-        const std::vector<CollectionGroup>& G = e->collections->groups();
+        const std::vector<CollectionGroup>& G = allG;
         for (size_t g = 0; g < G.size(); g++)
             for (size_t c = 0; c < G[g].list.size(); c++) out.push_back({ (int)g, (int)c });
         return out;
@@ -929,17 +974,21 @@ struct Ui::Impl {
         dirty = true;
     }
     void openCollection(int g, int c) {
+        if (const UserEntry* u = userEntry(g, c)) {
+            if (u->kind == 0) { openReceive(); return; }
+            if (u->kind == 2) { confirmDeleteListFile(u->file); return; }
+        }
         collG = g; collC = c;
         query.clear();
-        catAll = collectionItems(e->collections->groups()[g].list[c], items());
+        catAll = collectionItems(allG[g].list[c], items());
         browsing = false;
         refilter(true);
     }
     void drawBrowse() {
         const std::vector<CollRef> L = collFlat();
-        const std::vector<CollectionGroup>& G = e->collections->groups();
-        contextBanner(fmt(S::COLL_CTX_FMT, (int)L.size()), S::COLL_CREDIT);
+        const std::vector<CollectionGroup>& G = allG;
         const int f = std::max(0, std::min(browseFocus, (int)L.size() - 1));
+        contextBanner(fmt(S::COLL_CTX_FMT, (int)L.size()), (userGroup && L[f].g == 0) ? S::LISTS_CREDIT : S::COLL_CREDIT);
         const std::vector<std::vector<FavRow> > pages = collPages(L);
         int page = 0, row = 0;
         favLocate(pages, f, page, row);
@@ -949,7 +998,8 @@ struct Ui::Impl {
             if (fr.item < 0) {                                     // a header is always followed by an item
                 const CollectionGroup& g = G[L[pages[page][r + 1].item].g];
                 fillRound({ LIST_X, y + 4, LIST_W, 32 }, 4, C::panelAlt);
-                std::string label = fmt("%s \xC2\xB7 %d", upper(g.name).c_str(), (int)g.list.size());
+                const int shown = (int)g.list.size() - ((userGroup && L[pages[page][r + 1].item].g == 0 && e->receiver) ? 1 : 0);
+                std::string label = fmt("%s \xC2\xB7 %d", upper(g.name).c_str(), shown);
                 if (fr.cont) label += S::COLL_GROUP_CONT;
                 text(fSmall, label, C::textSecond, LIST_X + 16, y + 4 + (32 - fontH(fSmall)) / 2);
                 continue;
@@ -958,7 +1008,9 @@ struct Ui::Impl {
             const bool foc = fr.item == f;
             SDL_Rect rr = listRow((int)r, foc, false, false);
             const int n = (int)c.ids.size();
-            int cw = textR(fSmall, fmt(S::COLL_COUNT_FMT, n, plural(n)), foc ? C::selectInk : C::textSecond, rr.x + rr.w - 20, rr.y + (ROW_H - fontH(fSmall)) / 2);
+            const UserEntry* ue = userEntry(L[fr.item].g, L[fr.item].c);
+            const std::string right = !ue || ue->kind == 1 ? fmt(S::COLL_COUNT_FMT, n, plural(n)) : std::string(ue->kind == 0 ? S::RX_ENTRY_RIGHT : S::LIST_BAD_RIGHT);
+            int cw = textR(fSmall, right, foc ? C::selectInk : (ue && ue->kind == 2 ? C::warnInk : C::textSecond), rr.x + rr.w - 20, rr.y + (ROW_H - fontH(fSmall)) / 2);
             textMid(fBody, fit(fBody, c.name, rr.w - 56 - cw - 40), foc ? C::selectInk : C::textPrimary, rr.x + 32, rr);
         }
         pager(page, (int)pages.size());
@@ -980,7 +1032,133 @@ struct Ui::Impl {
                 for (size_t r = 0; r < pages[to].size(); r++) if (pages[to][r].item >= 0) { f = pages[to][r].item; break; }
             dirty = true;
         }
-        if (down & HidNpadButton_A) openCollection(L[f].g, L[f].c);
+        if (down & HidNpadButton_Y) { openCollection(L[f].g, L[f].c); return; }
+        if (down & HidNpadButton_A) {
+            if (userList(L[f].g, L[f].c)) listMenu(L[f].g, L[f].c);
+            else openCollection(L[f].g, L[f].c);
+        }
+    }
+
+    // ---- Lists from catalogue.ac ----
+    void listMenu(int g, int c) {
+        const ImportedList* l = userList(g, c);
+        const UserEntry* u = userEntry(g, c);
+        if (!l || !u) return;
+        Modal m; m.kind = Modal::MENU; m.title = l->name;
+        MenuEntry op; op.label = S::M_OPEN_LIST; op.isDefault = true; op.run = [this, g, c]() { openCollection(g, c); };
+        MenuEntry fl; fl.label = S::M_FILL_LIST; fl.run = [this, g, c]() { confirmListFill(g, c); };
+        const std::string file = u->file;
+        MenuEntry dl; dl.label = fmt(S::M_DELETE_FILE_FMT, file.c_str()); dl.destructive = true; dl.run = [this, file]() { confirmDeleteListFile(file); };
+        m.entries.push_back(op); m.entries.push_back(fl); m.entries.push_back(dl);
+        m.anchor = { 56, LIST_Y + ROW_PITCH, 600, ROW_H };
+        push(m);
+    }
+    // Slots this list would take: each item fills slots of at most its stack, in list order.
+    int listSlots(const ImportedList& l, bool& variants) const {
+        int n = 0;
+        variants = false;
+        for (const ListItem& it : l.items) {
+            const int cap = std::max(1, maxQty(it.id));
+            n += (it.qty + cap - 1) / cap;
+            variants |= single(it.id);
+        }
+        return n;
+    }
+    void confirmListFill(int g, int c) {
+        if (!canEdit()) return;
+        const ImportedList* l = userList(g, c);
+        if (!l) return;
+        const int empty = countEmpty(e->pockets);
+        if (empty == 0) { setToast(T_WARN, S::T_FULL); return; }
+        bool furniture = false;
+        const int need = listSlots(*l, furniture);
+        Modal d; d.kind = Modal::DIALOG; d.title = fmt(S::D_LFILL_TITLE_FMT, fit(fTitle, l->name, 420).c_str());
+        const int used = std::min(empty, need);
+        d.body.push_back(fmt(S::D_LFILL_BODY_FMT, used, plural(used)));
+        if (need > empty) d.body.push_back(fmt(S::D_LFILL_SHORT_FMT, need - empty, plural(need - empty)));
+        if (furniture) d.body.push_back(S::D_LFILL_VARIANT);
+        DialogButton no; no.label = S::B_NO;
+        DialogButton yes; yes.label = S::B_FILL;
+        yes.run = [this, g, c]() {
+            const ImportedList* l2 = userList(g, c);
+            if (!l2 || !canEdit()) return;
+            int filled = 0, from = 1;
+            for (const ListItem& it : l2->items) {
+                const int cap = std::max(1, maxQty(it.id));
+                for (int left = it.qty; left > 0;) {
+                    const int s = nextEmptySlot(e->pockets, from);
+                    if (s < 0) break;
+                    const int q = std::min(cap, left);
+                    if (!placeInEmpty(e->pockets, s, it.id, placeRaw(single(it.id), q))) break;
+                    filled++; left -= q; from = s;
+                }
+            }
+            setToast(T_INFO, fmt(S::T_LFILLED_FMT, filled, plural(filled)));
+        };
+        d.buttons.push_back(no); d.buttons.push_back(yes);
+        push(d);
+    }
+    void confirmDeleteListFile(const std::string& file) {
+        int lists = 0;
+        bool readable = false;
+        for (const ListFile& f : e->lists->files()) if (f.file == file) { lists = (int)f.lists.size(); readable = !f.lists.empty(); }
+        Modal d; d.kind = Modal::DIALOG; d.title = fmt(S::D_LDEL_TITLE_FMT, file.c_str());
+        d.body.push_back(readable ? fmt(S::D_LDEL_BODY_FMT, lists, plural(lists)) : std::string(S::D_LDEL_BAD));
+        DialogButton no; no.label = S::B_NO;
+        DialogButton yes; yes.label = S::B_DELETE; yes.destructive = true;
+        yes.run = [this, file]() {
+            e->lists->remove(e->listsDir, file, items(), *e->clothing);
+            collG = collC = -1; catAll.clear(); results.clear();
+            rebuildGroups();
+            browsing = collectionsOn();
+            setToast(T_INFO, S::T_LDELETED);
+        };
+        d.buttons.push_back(no); d.buttons.push_back(yes);
+        push(d);
+    }
+    void openReceive() {
+        if (!e->receiver) return;
+        Modal m; m.kind = Modal::RECEIVE; m.title = S::RX_TITLE;
+        bool offline = false;
+        if (!e->receiver->open(m.address, m.code, offline)) { showError(offline ? S::RX_E_OFFLINE : S::RX_E_START, S::RX_ERR_TITLE); return; }
+        m.status = S::RX_WAITING;
+        push(m);
+    }
+    ReceiveReply received(const std::string& text, Modal& m) {
+        std::string saved; std::vector<ImportedList> got; ListStats st;
+        const ListResult r = e->lists->add(e->listsDir, text, items(), *e->clothing, saved, got, st);
+        if (r != LR_OK) return { false, r == LR_EMPTY ? S::RX_EMPTY : r == LR_SD ? S::RX_SD : S::RX_NOT_LIST };
+        const int n = (int)got[0].items.size();
+        std::string msg = fmt(S::RX_OK_FMT, got[0].name.c_str(), n, plural(n));
+        if (got.size() > 1) msg += fmt(S::RX_MORE_FMT, (int)got.size() - 1, plural((int)got.size() - 1));
+        if (st.skipped()) msg += fmt(S::RX_SKIPPED_FMT, st.skipped(), st.skipped() == 1 ? "y" : "ies");
+        m.status = fmt(S::RX_GOT_FMT, got[0].name.c_str(), n, plural(n));
+        if (got.size() > 1) m.status += fmt(S::RX_MORE_FMT, (int)got.size() - 1, plural((int)got.size() - 1));
+        rebuildGroups();
+        setToast(T_OK, m.status);
+        return { true, msg };
+    }
+    void pollReceive() {
+        if (!e || !e->receiver || modals.empty() || modals.back().kind != Modal::RECEIVE) return;
+        e->receiver->poll([this](const std::string& t) { return received(t, modals.back()); });
+        if (e->receiver->lockedOut()) { e->receiver->close(); popModal(); showError(S::RX_LOCKED, S::RX_ERR_TITLE); }
+    }
+    void drawReceive(const Modal& m) {
+        fill({ 0, 0, 1280, 640 }, C::veil);
+        SDL_Rect r = { 240, 130, 800, 400 };
+        boxFrame(r, C::wood);
+        fillRound({ r.x + 3, r.y + 3, r.w - 6, 53 }, 6, C::wood);
+        text(fTitle, m.title, C::selectInk, r.x + 24, r.y + 3 + (53 - fontH(fTitle)) / 2);
+        text(fBody, S::RX_STEP1, C::textPrimary, r.x + 32, r.y + 80);
+        SDL_Rect ar = { r.x + 32, r.y + 120, r.w - 64, 64 };
+        fillRound(ar, 4, C::sunken);
+        textC(fDisplay, m.address, C::inkStrong, ar);
+        text(fBody, S::RX_STEP2, C::textPrimary, r.x + 32, r.y + 214);
+        SDL_Rect cr = { r.x + 140, r.y + 200, 220, 64 };
+        fillRound(cr, 4, C::selectBg);
+        textC(fDisplay, fmt("%04d", m.code), C::selectInk, cr);
+        textC(fBody, fit(fBody, m.status, r.w - 64), m.status == S::RX_WAITING ? C::textSecond : C::ok, { r.x + 32, r.y + 288, r.w - 64, 36 });
+        text(fSmall, fit(fSmall, S::RX_HINT, r.w - 64), C::textSecond, r.x + 32, r.y + 344);
     }
     void catalogInput(uint64_t down, uint64_t nav) {
         if (browsing) {
@@ -990,7 +1168,7 @@ struct Ui::Impl {
         int& f = focus[P_CATALOG];
         if (down & (HidNpadButton_ZL | HidNpadButton_ZR)) {     // type filter: ZR next, ZL previous
             if (!itemsLoaded()) return;
-            if (!collectionsOn()) { setToast(T_WARN, S::T_COLL_MISSING); return; }
+            if (!typesOn()) { setToast(T_WARN, S::T_COLL_MISSING); return; }
             typeFilter = (typeFilter + ((down & HidNpadButton_ZR) ? 1 : TF_COUNT - 1)) % TF_COUNT;
             refilter(false);
             return;
@@ -1010,7 +1188,7 @@ struct Ui::Impl {
             return;
         }
         uint16_t id = (uint16_t)results[f - 1];
-        if (down & HidNpadButton_Y) setHand(id, hand.valid ? hand.qty : 1, true);
+        if (down & HidNpadButton_Y) { const int lq = listQty(id); setHand(id, lq > 0 ? lq : hand.valid ? hand.qty : 1, true); }
         else takeMenu(id, false);
     }
 
@@ -1440,6 +1618,7 @@ struct Ui::Impl {
             case SR_DOCTOR: askDoctor(); break;
             case SR_RELOAD:
                 if (e->reloadLists) e->reloadLists();
+                rebuildGroups();
                 infoValid = false;
                 setToast(T_OK, S::T_RELOADED);
                 if (e->favorites && e->favorites->ignoredLines())
@@ -1996,6 +2175,7 @@ struct Ui::Impl {
                 case Modal::DIALOG: drawDialog(m); break;
                 case Modal::WAIT: drawWait(m); break;
                 case Modal::PROGRESS: drawProgress(m); break;
+                case Modal::RECEIVE: drawReceive(m); break;
                 default: break;                                      // REVIEW is a full screen, drawn first
             }
         }
@@ -2028,7 +2208,7 @@ struct Ui::Impl {
                     const std::vector<CollRef> L = collFlat();
                     if (!L.empty()) {
                         const CollRef& r = L[std::max(0, std::min(browseFocus, (int)L.size() - 1))];
-                        const CollectionGroup& g = e->collections->groups()[r.g];
+                        const CollectionGroup& g = allG[r.g];
                         const int n = (int)g.list[r.c].ids.size();
                         d = g.name + S::DOT + g.list[r.c].name + S::DOT + fmt(S::COLL_COUNT_FMT, n, plural(n));
                     }
@@ -2059,6 +2239,8 @@ struct Ui::Impl {
             left.push_back({ "A", true, S::H_QUIT, false, false });
         } else if (top && top->kind == Modal::WAIT) {
             // nothing: the write is running
+        } else if (top && top->kind == Modal::RECEIVE) {
+            left.push_back({ "B", true, S::H_STOP, false, false });
         } else if (top && top->kind == Modal::PROGRESS) {
             left.push_back({ "B", true, S::H_CANCEL, false, false });
         } else if (top && top->kind == Modal::MENU) {
@@ -2096,8 +2278,8 @@ struct Ui::Impl {
             left.push_back({ "B", true, S::H_BACK, true, false });
             if (panel == P_CATALOG) {
                 left.push_back({ "X", true, S::H_SEARCH, !itemsLoaded(), false });
-                left.push_back({ "ZL", false, "", !collectionsOn(), false });
-                left.push_back({ "ZR", false, S::H_FILTER, !collectionsOn(), false });
+                left.push_back({ "ZL", false, "", !typesOn(), false });
+                left.push_back({ "ZR", false, S::H_FILTER, !typesOn(), false });
             }
             int n = pending();
             right.push_back({ "L", false, "", false, false });
@@ -2153,6 +2335,7 @@ struct Ui::Impl {
         switch (m.kind) {
             case Modal::WAIT: return;
             case Modal::PROGRESS: if (down & HidNpadButton_B) e->updater->cancel(); return;   // pollUpdate() closes the box
+            case Modal::RECEIVE: if (down & HidNpadButton_B) { e->receiver->close(); popModal(); } return;
             case Modal::REVIEW: reviewInput(m, down, nav); return;
             case Modal::MENU: {
                 int n = (int)m.entries.size();
@@ -2335,6 +2518,7 @@ void Ui::start(EngineHooks& e) {
     if (d_->ready()) snapshotBase(d_->base, e.pockets, e.vals);
     if (e.favorites && e.favorites->ignoredLines())
         d_->setToast(T_WARN, fmt(S::T_FAV_IGNORED_FMT, e.favorites->ignoredLines(), plural(e.favorites->ignoredLines())));
+    d_->rebuildGroups();
     if (!e.startupNote.empty()) d_->setToast(e.startupWarn ? T_WARN : T_OK, e.startupNote);
     d_->dirty = true;
 }
@@ -2360,6 +2544,7 @@ bool Ui::frame(uint64_t down, uint64_t held) {
     } else {
         d.input(down, held);
         d.pollUpdate();
+        d.pollReceive();
     }
     if (!d.toast.empty() && SDL_GetTicks() > d.toastUntil) { d.toast.clear(); d.dirty = true; }
     // The Turnips panel follows the clock (AM/PM, day change): re-read it every 30 s.

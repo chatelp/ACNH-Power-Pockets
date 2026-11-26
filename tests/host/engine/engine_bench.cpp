@@ -26,6 +26,10 @@
 #include <sys/wait.h>
 #include <unistd.h>
 #include <zlib.h>
+#include <arpa/inet.h>
+#include <netinet/in.h>
+#include <sys/socket.h>
+#include <sys/time.h>
 
 int pp_app_main(int argc, char** argv);                       // source/main.cpp, renamed in main_under_test.cpp
 void CryptACNH(const uint8_t* header, uint8_t* data, size_t dataLen);   // engine (symmetric AES-CTR)
@@ -987,6 +991,108 @@ static void scnUpdate(const Save& s0) {
     g_arg0 = "app";
 }
 
+// ---- lists from catalogue.ac ----
+static int g_rxSock = -1;
+static void rxSend(const std::string& code, const std::string& body) {            // probe side: the phone
+    probe([code, body]() {
+        std::string t = screenText();
+        size_t at = t.find("http://127.0.0.1:");
+        CHECK(at != std::string::npos);
+        int port = at == std::string::npos ? 0 : atoi(t.c_str() + at + 17);
+        g_rxSock = socket(AF_INET, SOCK_STREAM, 0);
+        sockaddr_in a; memset(&a, 0, sizeof a); a.sin_family = AF_INET; a.sin_port = htons((uint16_t)port); a.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+        CHECK(connect(g_rxSock, (sockaddr*)&a, sizeof a) == 0);
+        std::string req = "POST /send HTTP/1.1\r\nHost: x\r\nX-Code: " + code + "\r\nContent-Length: " + std::to_string(body.size()) + "\r\n\r\n" + body;
+        CHECK(send(g_rxSock, req.data(), req.size(), 0) == (ssize_t)req.size());
+        usleep(30000);                                   // let the loopback deliver it before the next frames
+    });
+    idle(12);
+}
+static void rxExpect(const char* text) {
+    std::string want = text;
+    probe([want]() {
+        struct timeval tv = { 1, 0 };
+        setsockopt(g_rxSock, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof tv);
+        std::string out; char buf[2048]; ssize_t n;
+        while ((n = recv(g_rxSock, buf, sizeof buf, 0)) > 0) out.append(buf, (size_t)n);
+        close(g_rxSock); g_rxSock = -1;
+        if (out.find(want) == std::string::npos) { printf("    want [%s] reply: %s\n", want.c_str(), out.c_str()); CHECK(false); } else CHECK(true);
+    });
+}
+// Catalog > Browse collections, from the Pockets panel: Receive entry first, then the lists.
+static void openBrowse() { panel(P_POCKETS, P_CATALOG); press(RIGHT); press(A); idle(2); SEE("YOUR LISTS"); }
+
+static void scnLists(const Save& s0) {
+    g_scn = "catalogue_lists";
+    World w = makeWorld(g_scn, s0);
+    const std::string dst = w.root + "/sdmc:/switch/acnh_power_pockets/";
+    writeFile(dst + "catalogue_ac.txt", slurp(g_repo + "/assets/catalogue_ac.txt"));
+    std::string cmd = "mkdir -p '" + dst + "lists'";
+    if (system(cmd.c_str()) != 0) exit(2);
+    const std::string ex = "{\"lists\":[{\"name\":\"Japanese bedroom\",\"items\":{\"5851\":25,\"2768\":30,\"9617\":2,\"d632\":1}}]}";
+    writeFile(dst + "lists/catalogue-2026-11-26.json", Bytes(ex.begin(), ex.end()));
+    // Fill pockets with a list, then Apply: exactly those slots, nothing else.
+    launch(w, "fill from a list", [&]() {
+        idle(2); openBrowse(); SEE("Receive a list from catalogue.ac"); SEE("Japanese bedroom");
+        press(DOWN); press(A); idle(2); SEE("Fill pockets with this list");
+        press(DOWN); press(A); idle(2); SEE("Fill pockets with \"Japanese bedroom\"?"); SEE("base color");
+        press(RIGHT); press(A); idle(2); SEE("6 slots filled from the list");
+        press(B); idle(2); panel(P_CATALOG, P_POCKETS);
+        applyFromPanel(); SEE("Changes applied");
+        probe([&]() {
+            Bytes p = nandPlainP(s0);
+            int nmt = 0, nmtStacks = 0, wood = 0, axes = 0, changedOld = 0;
+            for (int i = 1; i <= 20; i++) {
+                const uint8_t* r = &p[POCKETS + (i - 1) * 8];
+                const uint8_t* o = &s0.model.pockets[(i - 1) * 8];
+                const uint16_t id = (uint16_t)(r[0] | r[1] << 8), raw = (uint16_t)(r[4] | r[5] << 8);
+                if ((o[0] | o[1] << 8) != pp::ID_EMPTY) { if (memcmp(r, o, 8)) changedOld++; continue; }
+                if (id == ID_NMT) { nmt += pp::rawToQty(raw); nmtStacks++; }
+                if (id == ID_WOOD) wood += pp::rawToQty(raw);
+                if (id == ID_GAXE) { axes++; CHECK(raw == 0); }
+            }
+            CHECK(changedOld == 0); CHECK(nmt == 25 && nmtStacks == 3); CHECK(wood == 30); CHECK(axes == 2);
+            CHECK(validHashes(p, P_REGS, 2) == 2);
+        });
+        quitFromPanel();
+    });
+    // Receive over the local network: wrong code, a list, then five wrong codes close it.
+    launch(w, "receive", [&]() {
+        idle(2); openBrowse(); press(A); idle(2); SEE("Code:"); SEE("4821"); SEE("http://127.0.0.1:");
+        rxSend("1234", "{\"name\":\"x\",\"items\":{\"5851\":1}}"); rxExpect("Wrong code");
+        rxSend("4821", "hello"); rxExpect("isn't a catalogue.ac export");
+        rxSend("4821", "{\"name\":\"From phone\",\"items\":{\"2768\":5,\"rr1\":1}}"); rxExpect("From phone\\\" is on the console: 1 item. Open it in Catalog > Browse collections. 1 entry skipped");
+        SEE("Received \"From phone\": 1 item");
+        for (int i = 0; i < 4; i++) { rxSend("0000", "x"); rxExpect("Wrong code"); }
+        SEE("Too many wrong codes"); press(A); idle(2);
+        SEE("From phone");
+        press(A); idle(2); SEE("Code:");                             // open again: a working server
+        rxSend("4821", "{\"name\":\"Second\",\"items\":{\"5851\":2}}"); rxExpect("\"ok\":true");
+        press(B); idle(2); NOT_SEE("Code:");
+        quitFromPanel();
+    }, [&]() {
+        CHECK(fileThere(sd("lists/list_001.json")) && fileThere(sd("lists/list_002.json")) && !fileThere(sd("lists/list_003.json")));
+        CHECK(counters.nandWrites == 0 && counters.commits == 0);
+        CHECK(net.socketInits == net.socketExits && net.socketInits == 2 && net.urls.empty());
+    });
+    launch(w, "offline", [&]() { net.connected = false; idle(2); openBrowse(); press(A); idle(2); SEE("isn't connected to a network"); press(A); idle(2); quitFromPanel(); },
+        [&]() { CHECK(net.socketInits == 0); });
+    // Delete a list file; a damaged file shows up and can be deleted too.
+    writeFile(dst + "lists/broken.json", Bytes(5, '{'));
+    launch(w, "delete", [&]() {
+        idle(2); openBrowse(); SEE("broken.json"); SEE("can't be read");
+        press(DOWN); press(A); idle(2); SEE("Delete broken.json?"); press(RIGHT); press(A); idle(2); SEE("List file deleted");
+        NOT_SEE("broken.json");
+        press(A); idle(2); press(UP); press(A); idle(2);              // the first list's menu, last entry: delete
+        SEE("Delete catalogue-2026-11-26.json?"); press(RIGHT); press(A); idle(2);
+        NOT_SEE("Japanese bedroom");
+        quitFromPanel();
+    }, [&]() {
+        CHECK(!fileThere(sd("lists/broken.json")) && !fileThere(sd("lists/catalogue-2026-11-26.json")) && fileThere(sd("lists/list_001.json")));
+        CHECK(counters.nandWrites == 0);
+    });
+}
+
 // L / R wrap around the panels: L on Pockets opens System, R on System comes back.
 static void scnPanelsWrap(const Save& s0) {
     g_scn = "panels_wrap";
@@ -1147,6 +1253,7 @@ int main(int argc, char** argv) {
         { "turnips_read_only", scnTurnips },
         { "panels_wrap", scnPanelsWrap },
         { "update", scnUpdate },
+        { "catalogue_lists", scnLists },
         { "bag_slots", scnBag },
         { "launch_guards", scnGuards },
         { "review_revert_focus", scnReviewRevertFocus },

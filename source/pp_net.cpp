@@ -3,6 +3,10 @@
 
 #include <curl/curl.h>
 
+#include <arpa/inet.h>
+#include <chrono>
+#include <netinet/in.h>
+
 namespace pp {
 
 namespace {
@@ -64,6 +68,44 @@ NetError CurlClient::get(const std::string& url, size_t maxBytes, const std::fun
         case CURLE_HTTP_RETURNED_ERROR: return http == 403 || http == 429 ? NET_LIMIT : NET_HTTP;
         default: return NET_OTHER;
     }
+}
+
+bool ReceiveService::open(std::string& address, int& code, bool& offline) {
+    close();
+    offline = false;
+    u32 ip = 0;
+    bool connected = false;
+    if (R_SUCCEEDED(nifmInitialize(NifmServiceType_User))) {
+        // A local network is enough: an address on it, internet or not.
+        connected = R_SUCCEEDED(nifmGetCurrentIpAddress(&ip)) && ip != 0;
+        nifmExit();
+    }
+    if (!connected) { offline = true; return false; }
+    if (R_FAILED(socketInitializeDefault())) return false;
+    sockets_ = true;
+    u32 r = 0;
+    randomGet(&r, sizeof r);
+    code = (int)(r % 10000);
+    for (uint16_t port = 8080; port < 8090; port++) {
+        if (!server_.start(port, code)) continue;
+        struct in_addr a;
+        a.s_addr = ip;                                   // already in network order
+        address = std::string("http://") + inet_ntoa(a) + ":" + std::to_string(port);
+        return true;
+    }
+    close();
+    return false;
+}
+
+void ReceiveService::close() {
+    server_.stop();
+    if (sockets_) socketExit();
+    sockets_ = false;
+}
+
+void ReceiveService::poll(const std::function<ReceiveReply(const std::string&)>& onText) {
+    const uint32_t ms = (uint32_t)std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
+    server_.poll(ms, onText);
 }
 
 bool UpdateService::online() {

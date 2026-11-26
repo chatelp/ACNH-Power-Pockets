@@ -26,6 +26,15 @@ $CXX $FLAGS -O1 -g -fsanitize=address,undefined \
 PP_TMP="$OUT" "$OUT/test_update"
 
 echo
+echo "== unit tests (pp_lists, pp_receive) =="
+$CXX $FLAGS -O1 -g -fsanitize=address,undefined \
+    "$ROOT/source/pp_model.cpp" "$ROOT/source/pp_lists.cpp" "$ROOT/tests/host/test_lists.cpp" -o "$OUT/test_lists"
+PP_TMP="$OUT" PP_ASSETS="$ROOT/assets" "$OUT/test_lists"
+$CXX $FLAGS -O1 -g -fsanitize=address,undefined \
+    "$ROOT/source/pp_receive.cpp" "$ROOT/tests/host/test_receive.cpp" -o "$OUT/test_receive"
+"$OUT/test_receive"
+
+echo
 echo "== syntax check against libnx / SDL2 stubs =="
 for f in "$ROOT"/source/*.cpp; do
     echo "  $(basename "$f")"

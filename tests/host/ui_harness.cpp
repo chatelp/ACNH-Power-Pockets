@@ -13,6 +13,7 @@
 #include <string>
 #include <vector>
 #include <deque>
+#include <sys/stat.h>
 
 using namespace pp;
 
@@ -58,6 +59,15 @@ static const char* FAV_NAMES[] = {
     "golden watering can", "crown (No Variations)", "royal crown (No Variations)" };
 static const char* LOADOUT_NAMES[] = { "Mining", "Fishing", "Terraforming", "Custom 1", "Custom 2" };
 
+struct FakeReceiver : Receiver {
+    bool on = true, isOpen = false, locked = false; int opens = 0, closes = 0;
+    std::deque<std::string> inbox; std::vector<ReceiveReply> replies;
+    bool open(std::string& address, int& code, bool& offline) override { offline = !on; if (!on) return false; opens++; isOpen = true; address = "http://192.168.1.23:8080"; code = 4821; return true; }
+    void close() override { closes++; isOpen = false; }
+    void poll(const std::function<ReceiveReply(const std::string&)>& onText) override { while (!inbox.empty()) { replies.push_back(onText(inbox.front())); inbox.pop_front(); } }
+    bool lockedOut() override { return locked; }
+};
+
 struct FakeUpdater : Updater {
     UpdateState st = UPD_IDLE; UpdateError err = UE_NONE; ReleaseInfo rel; bool on = true, place = true;
     int pct = 0, checks = 0, downloads = 0, cancels = 0, discards = 0;
@@ -82,6 +92,7 @@ int main(int argc, char** argv) {
     copy(root + "/assets/icon.png", sd + "icon.png");
     copy(root + "/assets/ui_icons.png", sd + "ui_icons.png");
     copy(root + "/assets/author.png", sd + "author.png");
+    copy(root + "/assets/catalogue_ac.txt", sd + "catalogue_ac.txt");
     copy(root + "/assets/nonstackable.txt", sd + "nonstackable.txt");
     copy(root + "/assets/item_glyphs.png", sd + "item_glyphs.png");
     copy(root + "/assets/item_glyphs.txt", sd + "item_glyphs.txt");
@@ -152,6 +163,18 @@ int main(int argc, char** argv) {
     h.restore = [&]() { restoreCalls++; return ER_OK; };
     FakeUpdater upd;
     h.updater = &upd;
+    FakeReceiver rx;
+    ClothingIds clothing; CHECK(clothing.load((sd + "catalogue_ac.txt").c_str()));
+    ImportedLists lists;
+    mkdir((sd + "lists").c_str(), 0777);
+    {
+        FILE* lf = fopen((sd + "lists/catalogue-2026-11-26.json").c_str(), "wb");
+        fprintf(lf, "{\"lists\":[{\"name\":\"Japanese bedroom\",\"items\":{\"%d\":1,\"%d\":1,\"c652-1\":1,\"%d\":25}},{\"name\":\"Mining trip\",\"items\":{\"%d\":30,\"%d\":2}}]}",
+                idOf(items, "imperial bed"), idOf(items, "imperial chest"), idOf(items, "Nook Miles Ticket"), idOf(items, "iron nugget"), idOf(items, "golden shovel"));
+        fclose(lf);
+    }
+    lists.load(sd + "lists", items, clothing);
+    CHECK(lists.listCount() == 2);
     // Stalk Market as main.cpp would read it, and a fake console clock.
     TurnipWeek week; week.present = true; week.buy = 98; week.pattern = 1; week.saved = gd(2026, 11, 11, 9);
     { const uint32_t pr[14] = { 0, 0, 85, 80, 76, 72, 110, 160, 532, 201, 140, 90, 60, 50 }; memcpy(week.price, pr, sizeof pr); }
@@ -673,6 +696,38 @@ int main(int argc, char** argv) {
         CHECK(memcmp(keep, pk, sizeof pk) == 0 && vv[0] == 100 && vv[1] == 200 && vv[2] == 300 && vv[3] == 400);
         CHECK(calls == 0);
         u.shutdown();
+    }
+
+    // Lists from catalogue.ac: Catalog > Browse collections > Your lists.
+    {
+        EngineHooks hl = h;                                     // the lists only here: the other tests know the Catalog without them
+        hl.receiver = &rx; hl.lists = &lists; hl.clothing = &clothing; hl.listsDir = sd + "lists";
+        Ui ui; ui.init(ren, sd); ui.start(hl); idle(ui);        // a fresh UI: Pockets, nothing held
+        press(ui, R, 2); press(ui, RIGHT); press(ui, A); idle(ui);
+        shot("lists-browse");
+        press(ui, DOWN); press(ui, A); idle(ui);
+        shot("lists-menu");
+        press(ui, B); press(ui, Y); idle(ui);                   // Y opens the list
+        shot("lists-open");
+        press(ui, UP); press(ui, RIGHT); press(ui, A); idle(ui);   // back to the list of collections
+        press(ui, A); press(ui, DOWN); press(ui, A); idle(ui);  // its menu > Fill pockets
+        shot("lists-fill");
+        press(ui, B); idle(ui);
+        press(ui, UP); press(ui, A); idle(ui);                  // Receive
+        CHECK(rx.opens == 1 && rx.isOpen);
+        shot("lists-receive");
+        rx.inbox.push_back("{\"name\":\"From my phone\",\"items\":{\"2768\":5,\"d1\":1}}");
+        rx.inbox.push_back("not a list");
+        idle(ui);
+        CHECK(rx.replies.size() == 2 && rx.replies[0].ok && !rx.replies[1].ok);
+        shot("lists-received");
+        press(ui, A); press(ui, PLUS); idle(ui);                // nothing else works while receiving
+        CHECK(rx.isOpen);
+        press(ui, B); idle(ui);
+        CHECK(!rx.isOpen && rx.closes == 1);
+        CHECK(lists.listCount() == 3);
+        rx.on = false; press(ui, A); idle(ui); shot("lists-offline"); press(ui, A); idle(ui); rx.on = true;
+        ui.shutdown();
     }
 
     ui.shutdown();

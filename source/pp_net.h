@@ -12,6 +12,7 @@
 
 #include "pp_ui.h"
 #include "pp_update.h"
+#include "pp_receive.h"
 
 namespace pp {
 
@@ -51,6 +52,19 @@ private:
     bool running_ = false;
     UpdateState what_ = UPD_IDLE;
     bool rightPlace_;
+};
+
+// "Receive a list": sockets and the local server, only while the Receive screen is open.
+class ReceiveService : public Receiver {
+public:
+    ~ReceiveService() override { close(); }
+    bool open(std::string& address, int& code, bool& offline) override;
+    void close() override;
+    void poll(const std::function<ReceiveReply(const std::string&)>& onText) override;
+    bool lockedOut() override { return server_.lockedOut(); }
+private:
+    ReceiveServer server_;
+    bool sockets_ = false;
 };
 
 } // namespace pp

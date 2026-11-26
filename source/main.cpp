@@ -430,12 +430,16 @@ int main(int argc, char** argv) {
     pp::GlyphMap glyphMap;                // item pictures, and which kinds of items never stack
     pp::StackLimits stackLimits;          // largest stack the game allows, per item
     pp::ItemCollections collections;      // Catalog collections and item types
+    pp::ClothingIds clothingIds;          // catalogue.ac clothing ids (catalogue_ac.txt)
+    pp::ImportedLists importedLists;      // lists from catalogue.ac (lists/ folder)
     auto reloadLists = [&]() {
         favorites.load(g_allItems, FAV_NAMES, FAV_MAX, sdDir + "user_favorites.txt");
         glyphMap.build(g_allItems, (sdDir + "item_glyphs.txt").c_str());       // before the 1/slot rules: they use its item kinds
         stackLimits.load((sdDir + "item_stacks.txt").c_str(), g_allItems.size());
         stackRules.build(g_allItems, (sdDir + "nonstackable.txt").c_str(), &glyphMap, &stackLimits);
         collections.load((sdDir + "item_collections.txt").c_str(), g_allItems);
+        clothingIds.load((sdDir + "catalogue_ac.txt").c_str());
+        importedLists.load(sdDir + "lists", g_allItems, clothingIds);
     };
     reloadLists();
 
@@ -910,6 +914,11 @@ int main(int argc, char** argv) {
 
     pp::UpdateService updater(updDir, hooks.version, selfPath == updPaths.nro());
     hooks.updater = &updater;
+    pp::ReceiveService receiver;
+    hooks.receiver = &receiver;
+    hooks.lists = &importedLists;
+    hooks.clothing = &clothingIds;
+    hooks.listsDir = sdDir + "lists";
     if (updRecovered == pp::REC_PENDING_CONFIRM) {            // first launch after an update: it works, forget the old files
         pp::confirmUpdate(updFs, updPaths);
         char note[96];
@@ -929,6 +938,7 @@ int main(int argc, char** argv) {
 
     const bool installUpdateNow = ui.installRequested() && updater.state() == pp::UPD_READY;
     updater.stop();
+    receiver.close();
     ui.shutdown();
     TTF_Quit();
     if (personal) free(personal);

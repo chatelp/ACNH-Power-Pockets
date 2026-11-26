@@ -6,6 +6,7 @@
 #include <curl/curl.h>
 #include <cstdarg>
 #include <cstring>
+#include <arpa/inet.h>
 
 namespace fake { Net net; }
 using fake::net;
@@ -71,6 +72,8 @@ Result nifmGetInternetConnectionStatus(NifmInternetConnectionType* t, u32* s, Ni
     *st = net.connected ? NifmInternetConnectionStatus_Connected : NifmInternetConnectionStatus_ConnectingUnknown1;
     return net.connected ? 0 : 1;
 }
+Result nifmGetCurrentIpAddress(u32* out) { net.onlineChecks++; *out = net.connected ? htonl(0x7F000001) : 0; return net.connected ? 0 : 1; }   // 127.0.0.1
+void randomGet(void* buf, size_t len) { uint32_t v = 4821; memset(buf, 0, len); memcpy(buf, &v, len < 4 ? len : 4); }
 Result socketInitializeDefault(void) { if (net.socketFail) return 1; g_sockets = true; net.socketInits++; return 0; }
 void socketExit(void) { g_sockets = false; net.socketExits++; }
 

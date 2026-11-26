@@ -72,6 +72,8 @@ typedef enum { NifmInternetConnectionStatus_ConnectingUnknown1 = 0, NifmInternet
 Result nifmInitialize(NifmServiceType type);
 void   nifmExit(void);
 Result nifmGetInternetConnectionStatus(NifmInternetConnectionType* type, u32* strength, NifmInternetConnectionStatus* status);
+Result nifmGetCurrentIpAddress(u32* out);
+void   randomGet(void* buf, size_t len);
 Result socketInitializeDefault(void);
 void   socketExit(void);
 typedef struct { void* handle; } Thread;
