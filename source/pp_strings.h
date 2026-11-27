@@ -128,6 +128,7 @@ static const char* const GRP_YOUR_LISTS   = "Your lists";
 static const char* const LISTS_CREDIT     = "Lists from catalogue.ac";
 static const char* const RX_ENTRY         = "Receive a list from catalogue.ac";
 static const char* const RX_ENTRY_RIGHT   = "Wi-Fi";
+static const char* const RX_ENTRY_NOTE    = "from your phone or computer, over Wi-Fi";
 static const char* const LIST_BAD_FMT     = "%s \xC2\xB7 can't be read";
 static const char* const LIST_BAD_RIGHT   = "A: delete";
 static const char* const M_OPEN_LIST      = "Open";

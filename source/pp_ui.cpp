@@ -2238,7 +2238,9 @@ struct Ui::Impl {
                         const CollRef& r = L[std::max(0, std::min(browseFocus, (int)L.size() - 1))];
                         const CollectionGroup& g = allG[r.g];
                         const int n = (int)g.list[r.c].ids.size();
-                        d = g.name + S::DOT + g.list[r.c].name + S::DOT + fmt(S::COLL_COUNT_FMT, n, plural(n));
+                        const UserEntry* ue = userEntry(r.g, r.c);
+                        d = g.name + S::DOT + g.list[r.c].name + S::DOT
+                          + (!ue || ue->kind == 1 ? fmt(S::COLL_COUNT_FMT, n, plural(n)) : std::string(ue->kind == 0 ? S::RX_ENTRY_NOTE : S::LIST_BAD_RIGHT));
                     }
                 } else if (focus[P_CATALOG] > 0 && focus[P_CATALOG] <= (int)results.size()) {
                     uint16_t id = (uint16_t)results[focus[P_CATALOG] - 1];

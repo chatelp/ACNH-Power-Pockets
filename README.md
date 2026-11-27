@@ -61,6 +61,15 @@ With the pocket upgrades from Nook's Cranny, the grid shows your 30 or 40 slots.
 | ![Catalog search results for sneakers, each in its own color](docs/screenshots/catalog.png) | ![The Japanese traditional collection, filtered to furniture](docs/screenshots/collections.png) |
 | **Catalog.** Search about 11,000 named items by name or by hex ID. | **Collections.** 113 themed lists: a Japanese traditional style, furniture series, HHA themes, clothing styles. **ZL / ZR** keep one type of item. |
 
+### Your catalogue.ac lists, sent from your phone
+
+Plan a room on [The ULTIMATE Catalogue](https://catalogue.ac), then send your lists to the console over your own Wi-Fi, without taking the SD card out. **A › Fill pockets with this list** puts what a list still needs into your empty slots and skips what you already carry. See [Lists from catalogue.ac](#lists-from-catalogueac).
+
+| | |
+|---|---|
+| ![Your lists in the Catalog: Receive a list, then two lists from catalogue.ac](docs/screenshots/lists.png) | ![A list from catalogue.ac open in the Catalog](docs/screenshots/list-open.png) |
+| **Your lists**, above the collections. **A** for Fill pockets or Delete, **Y** to open. | **A list, open.** Take its items with **Y**, like any collection. |
+
 ![Loadouts panel with a preview of the saved pockets](docs/screenshots/loadouts.png)
 
 **Loadouts.** Five pocket setups saved on the SD card, with a preview.
@@ -108,7 +117,7 @@ Do this once, with a save you can afford to lose. It checks, on your console and
 
 Requirements: a Switch running Atmosphère, and Animal Crossing: New Horizons **3.0.x** (other save versions open read-only).
 
-1. Download `ACNH-Power-Pockets-v1.3.0.zip` (or whatever is newest) from the [latest release](../../releases/latest) and extract it to the root of the SD card. It creates `switch/acnh_power_pockets/`. Builds of every commit are also in the [Actions tab](../../actions) (GitHub login required).
+1. Download `ACNH-Power-Pockets-v1.4.0.zip` (or whatever is newest) from the [latest release](../../releases/latest) and extract it to the root of the SD card. It creates `switch/acnh_power_pockets/`. Builds of every commit are also in the [Actions tab](../../actions) (GitHub login required).
 2. Fully close the game: HOME › highlight Animal Crossing › **X** › Close. A suspended game overwrites your edits on its next autosave.
 3. Hold **R** while starting Animal Crossing to open the Homebrew Menu, then launch **ACNH Power Pockets**. Launching from the Album is refused: it doesn't give the app enough access.
 
@@ -128,6 +137,8 @@ The folder should contain:
 
 From version 1.4.0, *System › About and updates › Check for updates* looks for a newer release on GitHub and can install it.
 
+![System › About and updates: the author, the credits and Check for updates](docs/screenshots/about.png)
+
 - **Nothing happens on its own.** The app connects only when you press that button and confirm, never turns Wi-Fi on, and sends nothing about you or your save. Going online with custom firmware is at your own risk; you can always update by hand instead.
 - **What is checked:** the connection is HTTPS with certificate verification, the package must be the one published in this repository, and its SHA-256 must match the one GitHub publishes. A package with anything unexpected in it is refused whole.
 - **What is replaced:** the files of the release, in `switch/acnh_power_pockets/`. Your save, backups, loadouts, favorites and your `nonstackable.txt` are not touched. The installation runs when the app closes, after the save was closed.
@@ -140,6 +151,10 @@ It only works for the copy of the app at `switch/acnh_power_pockets/acnh_power_p
 From version 1.4.0, the lists you make on [The ULTIMATE Catalogue](https://catalogue.ac) show up in *Catalog › Browse collections › Your lists*. Open one and take its items with **Y**, or use **A › Fill pockets with this list**: what the list still needs goes into your empty slots, with the quantities. What your pockets already hold is skipped, so after a trip home a second Fill brings the rest of the list. As always, nothing is written until you apply.
 
 To get a list onto the console, without taking the SD card out:
+
+| | |
+|---|---|
+| ![The Receive screen: an address and a 4-digit code](docs/screenshots/list-receive.png) | <img src="docs/screenshots/receive-page.png" width="240" alt="The page served by the console, on a phone: the code, the export file or share link, Send"> |
 
 1. In Power Pockets: *Catalog › Browse collections › Receive a list from catalogue.ac*. The console shows an address and a 4-digit code.
 2. On your phone or computer, on the same Wi-Fi, open that address. Drop the file from catalogue.ac's menu › *Export*, or paste a list's share link (`https://catalogue.ac/?l=…`), type the code and send.
@@ -233,7 +248,7 @@ All in `sdmc:/switch/acnh_power_pockets/`.
 | `damaged_*.dat` | Save Doctor | Copy taken before a repair |
 | `l_0.dat` … `l_4.dat` | the app | Loadouts: 160 bytes for 20 slots (the upstream format), 320 bytes for 30 or 40 slots |
 | `layout_*.dat` | the app | Cache of the save's region layout |
-| `lists/` | the app, or you | Lists from catalogue.ac: exports (`.json`) and share links (`.txt`). Delete them from *Your lists* or by hand |
+| `lists/` | the app, or you | Lists from catalogue.ac: one `.json` file per list received (sending a list again replaces it), and the exports (`.json`) or share links (`.txt`) you copy there yourself. Delete them from *Your lists* or by hand |
 | `update/` | the app | A downloaded update, and the previous version after an update (`previous.nro`) |
 
 `user_favorites.txt` format:

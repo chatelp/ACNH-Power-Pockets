@@ -13,6 +13,8 @@
 #include <string>
 #include <vector>
 #include <deque>
+#include <functional>
+#include <sys/stat.h>
 
 using namespace pp;
 
@@ -61,7 +63,7 @@ int main(int argc, char** argv) {
     const std::string root = argv[1];
     g_out = argv[2];
     const std::string sd = g_out + "/sd/";
-    const char* assets[] = { "font.ttf", "icon.png", "ui_icons.png", "author.png", "nonstackable.txt", "item_glyphs.png", "item_glyphs.txt", "item_stacks.txt", "item_collections.txt" };
+    const char* assets[] = { "font.ttf", "icon.png", "ui_icons.png", "author.png", "nonstackable.txt", "item_glyphs.png", "item_glyphs.txt", "item_stacks.txt", "item_collections.txt", "catalogue_ac.txt" };
     for (const char* a : assets) copyFile((root + "/assets/" + a).c_str(), (sd + a).c_str());
 
     std::vector<Item> items;
@@ -232,6 +234,45 @@ int main(int argc, char** argv) {
 
     (void)L;
     ui.shutdown();
+
+    // Lists from catalogue.ac: Your lists, one list open, and the Receive screen.
+    {
+        struct ShowReceiver : Receiver {
+            bool open(std::string& address, int& code, bool& offline) override { offline = false; address = "http://192.168.1.23:8080"; code = 4821; return true; }
+            void close() override {}
+            void poll(const std::function<ReceiveReply(const std::string&)>&) override {}
+            bool lockedOut() override { return false; }
+        } rx;
+        ClothingIds clothing; clothing.load((sd + "catalogue_ac.txt").c_str());
+        const std::string dir = sd + "lists";
+        mkdir(dir.c_str(), 0777);
+        FILE* lf = fopen((dir + "/catalogue-2026-11-26.json").c_str(), "wb");
+        if (lf) {
+            fprintf(lf, "{\"lists\":[{\"name\":\"Japanese bedroom\",\"items\":{\"%d\":1,\"%d\":1,\"%d\":1,\"%d\":2,\"%d\":1,\"%d\":1,\"%d\":2,\"%d\":4}},"
+                        "{\"name\":\"Garden party\",\"items\":{\"%d\":1,\"%d\":4,\"%d\":2,\"%d\":6,\"%d\":2}}]}",
+                    I("imperial bed"), I("imperial chest"), I("imperial low table"), I("imperial partition"), I("imperial decorative shelves"),
+                    I("bamboo shelf"), I("bamboo stool"), I("paper lantern"),
+                    I("outdoor picnic set"), I("tiki torch"), I("garden lantern"), I("rope fence"), I("stone lion-dog"));
+            fclose(lf);
+        }
+        ImportedLists lists; lists.load(dir, items, clothing);
+        EngineHooks hl = h;
+        hl.receiver = &rx; hl.lists = &lists; hl.clothing = &clothing; hl.listsDir = dir;
+        hl.info = [&](InfoData& d) {
+            d.saveSizeOk = true; d.personalSize = 0x74A40; d.mainSize = 0x9B0E90;
+            d.pRegOk = d.pRegCount = 2; d.mRegOk = d.mRegCount = 19; d.poisonAllZero = true;
+            d.backupPersonal = d.backupMain = d.sessionPersonal = d.sessionMain = 1;
+        };
+        Ui ul; ul.init(ren, sd); ul.start(hl); idle(ul);
+        press(ul, R, 2); press(ul, RIGHT); press(ul, A); press(ul, DOWN); idle(ul);
+        shot("lists");
+        press(ul, Y); idle(ul);
+        shot("list-open");
+        press(ul, UP); press(ul, RIGHT); press(ul, A); press(ul, UP); press(ul, A); idle(ul);
+        shot("list-receive");
+        press(ul, B); idle(ul);
+        ul.shutdown();
+    }
 
     // Pockets with the two upgrades (40 slots): the grid grows to 4 columns.
     {
